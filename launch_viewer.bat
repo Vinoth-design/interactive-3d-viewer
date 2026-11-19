@@ -1,0 +1,3 @@
+@echo off
+echo Starting Everdale 31-Inch Vanity 3D Viewer...
+start "" "%~dp0index.html"
