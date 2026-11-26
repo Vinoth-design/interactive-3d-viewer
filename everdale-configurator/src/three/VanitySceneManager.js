@@ -13,7 +13,11 @@ import {
   HARDWARE_FINISHES,
   WIDTH_OPTIONS,
 } from '../config/productConfig';
-import { getCountertopTexture } from '../utils/proceduralTextures';
+import {
+  getBrushedMetalNormal,
+  getCountertopPBR,
+  getWoodTextures,
+} from '../utils/proceduralTextures';
 import { AccessoryBuilder } from './AccessoryBuilder';
 import { BathroomRoomBuilder } from './BathroomRoomBuilder';
 import { DimensionOverlay } from './DimensionOverlay';
@@ -39,11 +43,21 @@ const OPPOSITE_DRAWER_ACTIONS = {
   All_Drawers_Close: 'All_Drawers_Open',
 };
 
+const WIDTH_DIST_FACTORS = {
+  '24': 0.90,
+  '31': 1.00,
+  '37': 1.08,
+  '49': 1.24,
+  '61': 1.42,
+};
+
 const CAMERA_PRESETS = {
-  threeQuarter: { pos: new THREE.Vector3(1.38, 1.46, 2.62), target: new THREE.Vector3(0, 0.86, 0.0) },
-  front: { pos: new THREE.Vector3(0, 1.08, 2.75), target: new THREE.Vector3(0, 0.86, 0.0) },
-  top: { pos: new THREE.Vector3(0, 1.88, 0.96), target: new THREE.Vector3(0, 0.82, -0.02) },
-  drawers: { pos: new THREE.Vector3(1.05, 0.94, 1.72), target: new THREE.Vector3(0, 0.44, 0.22) },
+  threeQuarter: { pos: new THREE.Vector3(1.44, 1.46, 2.86), target: new THREE.Vector3(0, 0.92, 0.0) },
+  front: { pos: new THREE.Vector3(0, 1.08, 2.90), target: new THREE.Vector3(0, 0.90, 0.0) },
+  side: { pos: new THREE.Vector3(2.45, 1.06, 0.56), target: new THREE.Vector3(0, 0.68, 0.0) },
+  top: { pos: new THREE.Vector3(0, 1.90, 0.94), target: new THREE.Vector3(0, 0.82, -0.02) },
+  detail: { pos: new THREE.Vector3(0.46, 0.96, 1.02), target: new THREE.Vector3(0.06, 0.68, 0.14) },
+  drawers: { pos: new THREE.Vector3(1.06, 0.92, 1.72), target: new THREE.Vector3(0, 0.44, 0.20) },
 };
 
 export class VanitySceneManager {
@@ -52,41 +66,44 @@ export class VanitySceneManager {
     this.callbacks = callbacks;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color('#e8e6e1');
+    this.scene.background = new THREE.Color('#e4e0d8');
 
     const width = container.clientWidth || 800;
     const height = container.clientHeight || 600;
 
-    this.camera = new THREE.PerspectiveCamera(36, width / height, 0.05, 30);
+    this.camera = new THREE.PerspectiveCamera(35, width / height, 0.05, 30);
     this.camera.position.copy(CAMERA_PRESETS.threeQuarter.pos);
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
       alpha: false,
-      preserveDrawingBuffer: true, // Enables crisp PNG snapshots
+      preserveDrawingBuffer: true,
       powerPreference: 'high-performance',
     });
     this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    const maxDpr = width < 768 ? 1.5 : 2;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxDpr));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.08;
+    this.renderer.toneMappingExposure = 0.98;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(this.renderer.domElement);
 
-    // PMREM Studio Environment for physically-based brass & mirror reflections
+    // PMREM Studio Environment for physically-based brass, stone & mirror reflections
     const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
     pmremGenerator.compileEquirectangularShader();
     this.defaultEnv = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environment = this.defaultEnv;
 
-    // Load Photorealistic HDRI Studio Maps
     this.hdrMaps = { studio: null, warm: null };
     const rgbeLoader = new RGBELoader();
 
     rgbeLoader.load('/textures/studio_small_09_1k.hdr', (texture) => {
-      if (this.isDisposed) return;
+      if (this.isDisposed) {
+        texture.dispose();
+        return;
+      }
       this.hdrMaps.studio = pmremGenerator.fromEquirectangular(texture).texture;
       texture.dispose();
       if (this.currentLightingPreset === 'studio' || this.currentLightingPreset === 'daylight') {
@@ -95,51 +112,59 @@ export class VanitySceneManager {
     });
 
     rgbeLoader.load('/textures/warm_studio_1k.hdr', (texture) => {
-      if (this.isDisposed) return;
+      if (this.isDisposed) {
+        texture.dispose();
+        return;
+      }
       this.hdrMaps.warm = pmremGenerator.fromEquirectangular(texture).texture;
       texture.dispose();
       if (!this.currentLightingPreset || this.currentLightingPreset === 'warm-bath' || this.currentLightingPreset === 'evening') {
         this.scene.environment = this.hdrMaps.warm;
       }
+      pmremGenerator.dispose();
     });
 
-    // Post-Processing Pipeline (Bloom, Tone Mapping, Glow on Brass & Emissive Sconces)
+    // Post-Processing Pipeline: High bloom threshold (>= 1.15) avoids washing out walls or stone
     this.composer = new EffectComposer(this.renderer);
     const renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(renderPass);
 
     this.bloomPass = new UnrealBloomPass(
       new THREE.Vector2(width, height),
-      0.32, // strength (elegant, subtle sheen)
-      0.42, // radius
-      0.82  // threshold (only glints & glowing lamps bloom)
+      0.09, // subtle highlight sheen only
+      0.28,
+      1.15  // threshold > 1.0 so white walls/stone never bloom into fog
     );
     this.composer.addPass(this.bloomPass);
 
     const outputPass = new OutputPass();
     this.composer.addPass(outputPass);
 
-    // Smooth constrained OrbitControls (prevent orbiting under floor or behind bathroom wall)
+    // Smooth constrained OrbitControls (orbit, zoom, clamped pan)
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.06;
+    this.controls.dampingFactor = 0.065;
+    this.controls.enablePan = true;
+    this.controls.panSpeed = 0.65;
+    this.controls.screenSpacePanning = true;
     this.controls.target.copy(CAMERA_PRESETS.threeQuarter.target);
-    this.controls.minDistance = 0.85;
-    this.controls.maxDistance = 4.4;
-    this.controls.minPolarAngle = 0.16;
-    this.controls.maxPolarAngle = Math.PI / 2 - 0.025;
+    this.controls.minDistance = 0.62;
+    this.controls.maxDistance = 4.6;
+    this.controls.minPolarAngle = 0.14;
+    this.controls.maxPolarAngle = Math.PI / 2 - 0.03;
     this.controls.minAzimuthAngle = -Math.PI * 0.44;
     this.controls.maxAzimuthAngle = Math.PI * 0.44;
     this.controls.update();
 
-    // Idle turntable auto-rotation timer
     this.lastInteractionTime = performance.now();
     this.activeWidthId = '31';
+    this.activePreset = 'threeQuarter';
+    this._loadGeneration = 0;
+    this._loadingUrl = null;
+    this._rafId = null;
 
-    // Lights
     this._setupLights();
 
-    // Sub-builders
     this.roomBuilder = new BathroomRoomBuilder();
     this.scene.add(this.roomBuilder.root);
 
@@ -149,7 +174,6 @@ export class VanitySceneManager {
     this.dimensionOverlay = new DimensionOverlay();
     this.scene.add(this.dimensionOverlay.root);
 
-    // Model & Animation state
     this.modelRoot = null;
     this.mixer = null;
     this.actions = {};
@@ -165,6 +189,7 @@ export class VanitySceneManager {
       hardware: null,
       countertop: null,
       sink: null,
+      drawerInterior: null,
     };
 
     this.drawerState = {
@@ -176,19 +201,17 @@ export class VanitySceneManager {
       r2Open: false,
     };
     this.drawerHitMap = new Map();
-    this.drawer1HitMeshes = [];
-    this.drawer2HitMeshes = [];
     this.dL1Node = null;
     this.dL2Node = null;
     this.dR1Node = null;
     this.dR2Node = null;
 
-    // Smooth camera lerp state
     this.cameraTween = null;
 
-    // Pointer interaction for click-to-open drawers
     this.raycaster = new THREE.Raycaster();
     this.pointerDownPos = new THREE.Vector2();
+    this.hotspotElements = {};
+    this._projVec = new THREE.Vector3();
     this._bindEvents();
 
     this.clock = new THREE.Clock();
@@ -197,30 +220,31 @@ export class VanitySceneManager {
   }
 
   _setupLights() {
-    this.hemiLight = new THREE.HemisphereLight('#fff8ec', '#cfc4b4', 0.75);
-    this.hemiLight.position.set(0, 3.4, 0);
+    this.hemiLight = new THREE.HemisphereLight('#fff8ec', '#cfc5b6', 0.58);
+    this.hemiLight.position.set(0, 3.6, 0);
     this.scene.add(this.hemiLight);
 
-    this.keyLight = new THREE.DirectionalLight('#fff5ea', 2.3);
-    this.keyLight.position.set(2.3, 3.5, 2.6);
+    this.keyLight = new THREE.DirectionalLight('#fff6eb', 1.95);
+    this.keyLight.position.set(2.4, 3.6, 2.8);
     this.keyLight.castShadow = true;
     this.keyLight.shadow.mapSize.set(2048, 2048);
-    this.keyLight.shadow.bias = -0.0003;
-    this.keyLight.shadow.normalBias = 0.02;
-    this.keyLight.shadow.camera.near = 0.4;
-    this.keyLight.shadow.camera.far = 9.0;
-    this.keyLight.shadow.camera.left = -2.0;
-    this.keyLight.shadow.camera.right = 2.0;
-    this.keyLight.shadow.camera.top = 2.5;
-    this.keyLight.shadow.camera.bottom = -0.4;
+    this.keyLight.shadow.bias = -0.00025;
+    this.keyLight.shadow.normalBias = 0.018;
+    this.keyLight.shadow.camera.near = 0.5;
+    this.keyLight.shadow.camera.far = 11.0;
+    // Wide shadow frustum prevents visible shadow-edge clipping across 61" scenes
+    this.keyLight.shadow.camera.left = -3.4;
+    this.keyLight.shadow.camera.right = 3.4;
+    this.keyLight.shadow.camera.top = 3.2;
+    this.keyLight.shadow.camera.bottom = -0.6;
     this.scene.add(this.keyLight);
 
-    this.fillLight = new THREE.DirectionalLight('#eddcc8', 0.75);
-    this.fillLight.position.set(-2.5, 2.2, 1.6);
+    this.fillLight = new THREE.DirectionalLight('#eae0d0', 0.58);
+    this.fillLight.position.set(-2.6, 2.2, 1.8);
     this.scene.add(this.fillLight);
 
-    this.rimLight = new THREE.DirectionalLight('#ffffff', 0.55);
-    this.rimLight.position.set(0.2, 3.0, -0.6);
+    this.rimLight = new THREE.DirectionalLight('#ffffff', 0.42);
+    this.rimLight.position.set(0.2, 3.0, -0.8);
     this.scene.add(this.rimLight);
   }
 
@@ -230,6 +254,8 @@ export class VanitySceneManager {
       const w = this.container.clientWidth;
       const h = this.container.clientHeight;
       if (w === 0 || h === 0) return;
+      const maxDpr = w < 768 ? 1.5 : 2;
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxDpr));
       this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(w, h);
@@ -247,7 +273,7 @@ export class VanitySceneManager {
       this.lastInteractionTime = performance.now();
       this.controls.autoRotate = false;
       this.pointerDownPos.set(e.clientX, e.clientY);
-      this.cameraTween = null; // Cancel camera lerp on manual orbit
+      this.cameraTween = null;
     };
 
     this._onPointerMove = (e) => {
@@ -261,7 +287,7 @@ export class VanitySceneManager {
       this.lastInteractionTime = performance.now();
       const dx = e.clientX - this.pointerDownPos.x;
       const dy = e.clientY - this.pointerDownPos.y;
-      if (Math.hypot(dx, dy) > 5) return; // User was orbiting, not clicking
+      if (Math.hypot(dx, dy) > 5) return;
 
       const hit = this._raycastDrawer(e);
       if (hit) {
@@ -298,195 +324,177 @@ export class VanitySceneManager {
     return this.drawerHitMap.get(hits[0].object);
   }
 
-  loadModel(url, initialConfig) {
-    const loader = new GLTFLoader();
-    loader.load(
-      url,
-      (gltf) => {
-        if (this.isDisposed) return;
+  _cleanupCurrentModel() {
+    if (!this.modelRoot) return;
+    this.scene.remove(this.modelRoot);
+    if (this.mixer) {
+      this.mixer.stopAllAction();
+      this.mixer.uncacheRoot(this.modelRoot);
+    }
+    this.actions = {};
 
-        this.modelRoot = gltf.scene;
-
-        // Shared dedicated countertop material so Integrated_Sink stays crisp ceramic white
-        const countertopMat = new THREE.MeshStandardMaterial({
-          color: '#f4f3ef',
-          roughness: 0.18,
-          metalness: 0.0,
-          envMapIntensity: 0.9,
-        });
-        this.materials.countertop = countertopMat;
-
-        this.modelRoot.traverse((child) => {
-          if (child.isMesh) {
-            child.castShadow = true;
-            child.receiveShadow = true;
-
-            if (child.name === 'Stone_Top' || child.name === 'Backsplash') {
-              child.material = countertopMat;
-            } else if (child.material) {
-              child.material.envMapIntensity = 1.0;
-              if (child.material.name === 'MAT_Evergreen_Fog') {
-                this.materials.cabinet = child.material;
-              } else if (child.material.name === 'MAT_Solid_Wood_Legs') {
-                this.materials.legs = child.material;
-              } else if (child.material.name === 'MAT_Antique_Brass') {
-                this.materials.hardware = child.material;
-              } else if (child.material.name === 'MAT_Engineered_Stone_White') {
-                this.materials.sink = child.material;
-              }
-            }
-          }
-        });
-
-        this.currentModelFile = url;
-        this.scene.add(this.modelRoot);
-
-        // Locate functional nodes
-        this.dL1Node = this.modelRoot.getObjectByName('Drawer_L1_Root');
-        this.dL2Node = this.modelRoot.getObjectByName('Drawer_L2_Root');
-        this.dR1Node = this.modelRoot.getObjectByName('Drawer_R1_Root');
-        this.dR2Node = this.modelRoot.getObjectByName('Drawer_R2_Root');
-        this.d1Node = this.modelRoot.getObjectByName('Drawer_01_Root') || this.dL1Node;
-        this.d2Node = this.modelRoot.getObjectByName('Drawer_02_Root') || this.dL2Node;
-        this.backsplashMesh = this.modelRoot.getObjectByName('Backsplash');
-        this.tray1Node = this.modelRoot.getObjectByName('Accessory_Tray_01');
-        this.tray2Node = this.modelRoot.getObjectByName('Accessory_Tray_02');
-
-        // Populate drawerHitMap
-        this.drawerHitMap.clear();
-        const registerHits = (node, id) => {
-          if (!node) return;
-          node.traverse((obj) => {
-            if (obj.isMesh) this.drawerHitMap.set(obj, id);
-          });
-        };
-
-        if (this.dL1Node && this.dR1Node) {
-          registerHits(this.dL1Node, 'L1');
-          registerHits(this.dL2Node, 'L2');
-          registerHits(this.dR1Node, 'R1');
-          registerHits(this.dR2Node, 'R2');
-        } else {
-          registerHits(this.d1Node, 'd1');
-          registerHits(this.d2Node, 'd2');
-        }
-
-        // Register all glTF animation clips with conflict-free mixer
-        this._setupAnimationMixer(gltf);
-        this.resetDrawers();
-
-        if (initialConfig) {
-          this.applyConfig(initialConfig);
-        }
-
-        if (this.callbacks.onLoaded) {
-          this.callbacks.onLoaded();
-        }
-      },
-      (progress) => {
-        if (this.callbacks.onProgress && progress.total > 0) {
-          this.callbacks.onProgress(Math.round((progress.loaded / progress.total) * 100));
-        }
-      },
-      (error) => {
-        console.warn(`Model not available yet: ${url}. Retaining active model.`);
-        if (this.callbacks.onError) {
-          this.callbacks.onError(error);
+    const disposedMaterials = new Set();
+    this.modelRoot.traverse((child) => {
+      if (child.isMesh) {
+        child.geometry?.dispose();
+        if (child.material && !disposedMaterials.has(child.material)) {
+          disposedMaterials.add(child.material);
+          child.material.dispose();
         }
       }
-    );
+    });
+    this.modelRoot = null;
+    this.drawerHitMap.clear();
   }
 
-  switchModel(url, config) {
-    if (this._loadingUrl === url) return;
+  _initModel(gltf, url) {
+    this.modelRoot = gltf.scene;
+    this.currentModelFile = url;
+    this._loadingUrl = null;
+
+    const countertopMat = new THREE.MeshPhysicalMaterial({
+      color: '#f4f3ef',
+      roughness: 0.16,
+      metalness: 0.0,
+      clearcoat: 0.24,
+      clearcoatRoughness: 0.14,
+      envMapIntensity: 0.92,
+    });
+    this.materials.countertop = countertopMat;
+
+    const mapleTex = getWoodTextures('drawer-maple');
+
+    this.modelRoot.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+
+        if (child.name === 'Stone_Top' || child.name === 'Backsplash') {
+          child.material = countertopMat;
+        } else if (child.material) {
+          child.material.envMapIntensity = 0.95;
+          if (child.material.name === 'MAT_Evergreen_Fog') {
+            this.materials.cabinet = child.material;
+          } else if (child.material.name === 'MAT_Solid_Wood_Legs') {
+            this.materials.legs = child.material;
+          } else if (child.material.name === 'MAT_Antique_Brass') {
+            this.materials.hardware = child.material;
+          } else if (child.material.name === 'MAT_Engineered_Stone_White') {
+            this.materials.sink = child.material;
+            child.material.color.set('#f6f6f3');
+            child.material.roughness = 0.14;
+            child.material.envMapIntensity = 0.75;
+          } else if (child.material.name === 'MAT_Drawer_Interior') {
+            this.materials.drawerInterior = child.material;
+            child.material.map = mapleTex.map;
+            child.material.normalMap = mapleTex.normalMap;
+            child.material.roughnessMap = mapleTex.roughnessMap;
+            child.material.color.set('#ffffff');
+            child.material.needsUpdate = true;
+          }
+        }
+      }
+    });
+
+    this.scene.add(this.modelRoot);
+
+    this.dL1Node = this.modelRoot.getObjectByName('Drawer_L1_Root');
+    this.dL2Node = this.modelRoot.getObjectByName('Drawer_L2_Root');
+    this.dR1Node = this.modelRoot.getObjectByName('Drawer_R1_Root');
+    this.dR2Node = this.modelRoot.getObjectByName('Drawer_R2_Root');
+    this.d1Node = this.modelRoot.getObjectByName('Drawer_01_Root') || this.dL1Node;
+    this.d2Node = this.modelRoot.getObjectByName('Drawer_02_Root') || this.dL2Node;
+    this.backsplashMesh = this.modelRoot.getObjectByName('Backsplash');
+    this.tray1Node = this.modelRoot.getObjectByName('Accessory_Tray_01');
+    this.tray2Node = this.modelRoot.getObjectByName('Accessory_Tray_02');
+
+    this.drawerHitMap.clear();
+    const registerHits = (node, id) => {
+      if (!node) return;
+      node.traverse((obj) => {
+        if (obj.isMesh) this.drawerHitMap.set(obj, id);
+      });
+    };
+
+    if (this.dL1Node && this.dR1Node) {
+      registerHits(this.dL1Node, 'L1');
+      registerHits(this.dL2Node, 'L2');
+      registerHits(this.dR1Node, 'R1');
+      registerHits(this.dR2Node, 'R2');
+    } else {
+      registerHits(this.d1Node, 'd1');
+      registerHits(this.d2Node, 'd2');
+    }
+
+    this._setupAnimationMixer(gltf);
+    this.resetDrawers();
+  }
+
+  loadModel(url, initialConfig) {
+    this._loadGeneration = (this._loadGeneration || 0) + 1;
+    const currentGen = this._loadGeneration;
     this._loadingUrl = url;
 
     const loader = new GLTFLoader();
     loader.load(
       url,
       (gltf) => {
-        this._loadingUrl = null;
-        if (this.isDisposed) return;
+        if (this.isDisposed || currentGen !== this._loadGeneration) return;
 
-        // Remove old model cleanly
-        if (this.modelRoot) {
-          this.scene.remove(this.modelRoot);
-          if (this.mixer) this.mixer.stopAllAction();
-          this.actions = {};
+        this._cleanupCurrentModel();
+        this._initModel(gltf, url);
+
+        if (initialConfig) {
+          this.activeWidthId = initialConfig.width || '31';
+          this.applyConfig(initialConfig);
+          this.setCameraPreset('threeQuarter', true);
         }
 
-        this.modelRoot = gltf.scene;
-        this.currentModelFile = url;
-
-        const countertopMat = new THREE.MeshStandardMaterial({
-          color: '#f4f3ef',
-          roughness: 0.18,
-          metalness: 0.0,
-          envMapIntensity: 0.9,
-        });
-        this.materials.countertop = countertopMat;
-
-        this.modelRoot.traverse((child) => {
-          if (child.isMesh) {
-            child.castShadow = true;
-            child.receiveShadow = true;
-
-            if (child.name === 'Stone_Top' || child.name === 'Backsplash') {
-              child.material = countertopMat;
-            } else if (child.material) {
-              child.material.envMapIntensity = 1.0;
-              if (child.material.name === 'MAT_Evergreen_Fog') {
-                this.materials.cabinet = child.material;
-              } else if (child.material.name === 'MAT_Solid_Wood_Legs') {
-                this.materials.legs = child.material;
-              } else if (child.material.name === 'MAT_Antique_Brass') {
-                this.materials.hardware = child.material;
-              } else if (child.material.name === 'MAT_Engineered_Stone_White') {
-                this.materials.sink = child.material;
-              }
-            }
-          }
-        });
-
-        this.scene.add(this.modelRoot);
-
-        this.dL1Node = this.modelRoot.getObjectByName('Drawer_L1_Root');
-        this.dL2Node = this.modelRoot.getObjectByName('Drawer_L2_Root');
-        this.dR1Node = this.modelRoot.getObjectByName('Drawer_R1_Root');
-        this.dR2Node = this.modelRoot.getObjectByName('Drawer_R2_Root');
-        this.d1Node = this.modelRoot.getObjectByName('Drawer_01_Root') || this.dL1Node;
-        this.d2Node = this.modelRoot.getObjectByName('Drawer_02_Root') || this.dL2Node;
-        this.backsplashMesh = this.modelRoot.getObjectByName('Backsplash');
-        this.tray1Node = this.modelRoot.getObjectByName('Accessory_Tray_01');
-        this.tray2Node = this.modelRoot.getObjectByName('Accessory_Tray_02');
-
-        this.drawerHitMap.clear();
-        const registerHits = (node, id) => {
-          if (!node) return;
-          node.traverse((obj) => {
-            if (obj.isMesh) this.drawerHitMap.set(obj, id);
-          });
-        };
-
-        if (this.dL1Node && this.dR1Node) {
-          registerHits(this.dL1Node, 'L1');
-          registerHits(this.dL2Node, 'L2');
-          registerHits(this.dR1Node, 'R1');
-          registerHits(this.dR2Node, 'R2');
-        } else {
-          registerHits(this.d1Node, 'd1');
-          registerHits(this.d2Node, 'd2');
+        this.callbacks.onLoaded?.();
+      },
+      (progress) => {
+        if (currentGen === this._loadGeneration && this.callbacks.onProgress && progress.total > 0) {
+          this.callbacks.onProgress(Math.round((progress.loaded / progress.total) * 100));
         }
+      },
+      (error) => {
+        if (currentGen === this._loadGeneration) {
+          this._loadingUrl = null;
+          console.warn(`Model not available yet: ${url}.`, error);
+          this.callbacks.onError?.(error);
+        }
+      }
+    );
+  }
 
-        this._setupAnimationMixer(gltf);
-        this.resetDrawers();
+  switchModel(url, config) {
+    if (this.currentModelFile === url && this.modelRoot) return;
+    if (this._loadingUrl === url) return;
 
+    this._loadGeneration = (this._loadGeneration || 0) + 1;
+    const currentGen = this._loadGeneration;
+    this._loadingUrl = url;
+
+    this.callbacks.onSwitching?.(true);
+
+    const loader = new GLTFLoader();
+    loader.load(
+      url,
+      (gltf) => {
+        if (this.isDisposed || currentGen !== this._loadGeneration) return;
+
+        this._cleanupCurrentModel();
+        this._initModel(gltf, url);
         this.applyConfig(config);
+        this.callbacks.onSwitching?.(false);
       },
       undefined,
       (error) => {
-        this._loadingUrl = null;
-        console.warn(`Model file ${url} not found or failed to load. Retaining active model.`, error);
+        if (currentGen === this._loadGeneration) {
+          this._loadingUrl = null;
+          this.callbacks.onSwitching?.(false);
+          console.warn(`Model file ${url} failed to load. Retaining active model.`, error);
+        }
       }
     );
   }
@@ -502,47 +510,61 @@ export class VanitySceneManager {
       this.switchModel(widthOpt.modelFile, config);
     }
 
-    // Adaptive camera reframing when vanity size changes
     if (config.width && config.width !== this.activeWidthId) {
       this.activeWidthId = config.width;
-      const widthDists = { '24': 0.94, '31': 1.0, '37': 1.05, '49': 1.15, '61': 1.26 };
-      const factor = widthDists[config.width] || 1.0;
-      const basePreset = CAMERA_PRESETS.threeQuarter;
-      const baseOffset = basePreset.pos.clone().sub(basePreset.target);
-      const targetPos = basePreset.target.clone().add(baseOffset.multiplyScalar(factor));
-      this.cameraTween = {
-        targetPos,
-        targetLook: basePreset.target.clone(),
-      };
-    }
-    // 1. Cabinet & Wood Legs Finish (instantaneous PBR swap, zero re-fetch)
-    const cabFinish = CABINET_FINISHES.find((f) => f.id === config.finish) || CABINET_FINISHES[0];
-    if (this.materials.cabinet) {
-      this.materials.cabinet.color.set(cabFinish.hex);
-      this.materials.cabinet.roughness = cabFinish.roughness;
-      this.materials.cabinet.needsUpdate = true;
-    }
-    if (this.materials.legs) {
-      this.materials.legs.color.set(cabFinish.legHex || cabFinish.hex);
-      this.materials.legs.roughness = cabFinish.roughness + 0.04;
-      this.materials.legs.needsUpdate = true;
+      this.setCameraPreset(this.activePreset || 'threeQuarter');
     }
 
-    // 2. Hardware Finish (Drawer & False Drawer handles)
+    // 1. Cabinet & Wood Legs Finish (instantaneous PBR swap, zero GLB reload)
+    const cabFinish = CABINET_FINISHES.find((f) => f.id === config.finish) || CABINET_FINISHES[0];
+    const applySurfaceFinish = (mat, fallbackHex, roughnessOffset = 0) => {
+      if (!mat) return;
+      if (cabFinish.finishType === 'wood') {
+        const woodPBR = getWoodTextures(cabFinish.id);
+        mat.map = woodPBR.map;
+        mat.normalMap = woodPBR.normalMap;
+        mat.normalScale?.set(0.65, 0.65);
+        mat.roughnessMap = woodPBR.roughnessMap;
+        mat.color.set(cabFinish.id === 'natural-oak' ? '#cfb088' : '#e6ddd5');
+        mat.roughness = 0.58 + roughnessOffset;
+      } else {
+        mat.map = null;
+        mat.normalMap = null;
+        mat.roughnessMap = null;
+        mat.color.set(fallbackHex);
+        mat.roughness = cabFinish.roughness + roughnessOffset;
+      }
+      mat.needsUpdate = true;
+    };
+
+    applySurfaceFinish(this.materials.cabinet, cabFinish.hex, 0);
+    applySurfaceFinish(this.materials.legs, cabFinish.legHex || cabFinish.hex, 0.04);
+
+    // 2. Hardware Finish (Drawer pulls with anisotropic brushed normal)
     const hwFinish = HARDWARE_FINISHES.find((h) => h.id === config.hardware) || HARDWARE_FINISHES[0];
     if (this.materials.hardware) {
       this.materials.hardware.color.set(hwFinish.hex);
       this.materials.hardware.metalness = hwFinish.metalness;
       this.materials.hardware.roughness = hwFinish.roughness;
+      this.materials.hardware.normalMap =
+        hwFinish.id === 'matte-black' ? null : getBrushedMetalNormal();
+      this.materials.hardware.normalScale?.set(0.45, 0.45);
+      this.materials.hardware.envMapIntensity = 1.15;
       this.materials.hardware.needsUpdate = true;
     }
 
-    // 3. Countertop Finish & Backsplash Visibility
+    // 3. Countertop Stone Finish & Backsplash Visibility
     const ctFinish = COUNTERTOP_FINISHES.find((c) => c.id === config.countertop) || COUNTERTOP_FINISHES[0];
     if (this.materials.countertop) {
-      this.materials.countertop.map = getCountertopTexture(ctFinish.textureType);
+      const stonePBR = getCountertopPBR(ctFinish.textureType);
+      this.materials.countertop.map = stonePBR.map;
+      this.materials.countertop.normalMap = stonePBR.normalMap;
+      if (stonePBR.normalMap && this.materials.countertop.normalScale) {
+        this.materials.countertop.normalScale.set(0.35, 0.35);
+      }
       this.materials.countertop.color.set('#ffffff');
       this.materials.countertop.roughness = ctFinish.roughness;
+      this.materials.countertop.envMapIntensity = 0.85;
       this.materials.countertop.needsUpdate = true;
     }
     if (this.backsplashMesh) {
@@ -554,16 +576,16 @@ export class VanitySceneManager {
     if (this.tray1Node) this.tray1Node.visible = showTrays;
     if (this.tray2Node) this.tray2Node.visible = showTrays;
 
-    // 5. Update Procedural Accessories (Faucet & Mirror)
+    // 5. Procedural Accessories (Faucet & Mirror)
     this.accessoryBuilder.update(config);
 
-    // 6. Update Bathroom Room Staging (Wall, Floor, Props)
+    // 6. Bathroom Room Staging
     this.roomBuilder.update(config, hwFinish);
 
-    // 7. Update Lighting Preset
+    // 7. Lighting & Tone Mapping
     this._applyLightingPreset(config.lighting);
 
-    // 8. Update 3D Dimension Lines
+    // 8. 3D Dimension Lines
     this.dimensionOverlay.update(config);
   }
 
@@ -572,82 +594,86 @@ export class VanitySceneManager {
     this.currentLightingPreset = preset;
 
     if (preset === 'studio') {
-      this.scene.background.set('#d8dce0');
+      this.scene.background.set('#dadde2');
       this.hemiLight.color.set('#f5f8fa');
       this.hemiLight.groundColor.set('#b4b8bd');
-      this.hemiLight.intensity = 0.65;
+      this.hemiLight.intensity = 0.56;
       this.keyLight.color.set('#ffffff');
-      this.keyLight.intensity = 2.4;
+      this.keyLight.intensity = 2.05;
       this.fillLight.color.set('#d8e6f4');
-      this.fillLight.intensity = 0.75;
-      this.rimLight.intensity = 0.5;
+      this.fillLight.intensity = 0.62;
+      this.rimLight.intensity = 0.45;
+      this.renderer.toneMappingExposure = 0.96;
+      if (this.bloomPass) {
+        this.bloomPass.strength = 0.08;
+        this.bloomPass.radius = 0.25;
+        this.bloomPass.threshold = 1.15;
+      }
+      if (this.hdrMaps?.studio) {
+        this.scene.environment = this.hdrMaps.studio;
+      }
+      this.roomBuilder?.setSconceLightIntensity(0.28);
+    } else if (preset === 'daylight') {
+      this.scene.background.set('#e6ecf1');
+      this.hemiLight.color.set('#e8f2fc');
+      this.hemiLight.groundColor.set('#c4beb2');
+      this.hemiLight.intensity = 0.62;
+      this.keyLight.color.set('#fffcf2');
+      this.keyLight.intensity = 2.35;
+      this.fillLight.color.set('#cde2f8');
+      this.fillLight.intensity = 0.52;
+      this.rimLight.intensity = 0.48;
+      this.renderer.toneMappingExposure = 1.00;
+      if (this.bloomPass) {
+        this.bloomPass.strength = 0.09;
+        this.bloomPass.radius = 0.28;
+        this.bloomPass.threshold = 1.15;
+      }
+      if (this.hdrMaps?.studio) {
+        this.scene.environment = this.hdrMaps.studio;
+      }
+      this.roomBuilder?.setSconceLightIntensity(0.22);
+    } else if (preset === 'evening') {
+      this.scene.background.set('#22272e');
+      this.hemiLight.color.set('#536276');
+      this.hemiLight.groundColor.set('#201c18');
+      this.hemiLight.intensity = 0.44;
+      this.keyLight.color.set('#ffdfae');
+      this.keyLight.intensity = 1.45;
+      this.fillLight.color.set('#3a4c66');
+      this.fillLight.intensity = 0.36;
+      this.rimLight.intensity = 0.68;
       this.renderer.toneMappingExposure = 1.08;
       if (this.bloomPass) {
-        this.bloomPass.strength = 0.22;
+        this.bloomPass.strength = 0.14;
         this.bloomPass.radius = 0.35;
-      }
-      if (this.hdrMaps?.studio) {
-        this.scene.environment = this.hdrMaps.studio;
-      }
-      if (this.roomBuilder) this.roomBuilder.setSconceLightIntensity(0.4);
-    } else if (preset === 'daylight') {
-      this.scene.background.set('#edf2f6');
-      this.hemiLight.color.set('#e8f2fc');
-      this.hemiLight.groundColor.set('#c8c2b7');
-      this.hemiLight.intensity = 0.75;
-      this.keyLight.color.set('#fffcf0');
-      this.keyLight.intensity = 3.0;
-      this.fillLight.color.set('#cde2f8');
-      this.fillLight.intensity = 0.6;
-      this.rimLight.intensity = 0.6;
-      this.renderer.toneMappingExposure = 1.16;
-      if (this.bloomPass) {
-        this.bloomPass.strength = 0.26;
-        this.bloomPass.radius = 0.40;
-      }
-      if (this.hdrMaps?.studio) {
-        this.scene.environment = this.hdrMaps.studio;
-      }
-      if (this.roomBuilder) this.roomBuilder.setSconceLightIntensity(0.3);
-    } else if (preset === 'evening') {
-      this.scene.background.set('#242930');
-      this.hemiLight.color.set('#485568');
-      this.hemiLight.groundColor.set('#201c18');
-      this.hemiLight.intensity = 0.45;
-      this.keyLight.color.set('#ffdfae');
-      this.keyLight.intensity = 1.6;
-      this.fillLight.color.set('#3a4c66');
-      this.fillLight.intensity = 0.4;
-      this.rimLight.intensity = 0.8;
-      this.renderer.toneMappingExposure = 1.25;
-      if (this.bloomPass) {
-        this.bloomPass.strength = 0.48;
-        this.bloomPass.radius = 0.65;
+        this.bloomPass.threshold = 1.05;
       }
       if (this.hdrMaps?.warm) {
         this.scene.environment = this.hdrMaps.warm;
       }
-      if (this.roomBuilder) this.roomBuilder.setSconceLightIntensity(1.6);
+      this.roomBuilder?.setSconceLightIntensity(0.95);
     } else {
-      // 'warm-bath' (Default) - Cozy 2700K residential bath lighting
-      this.scene.background.set('#ece8e0');
+      // 'warm-bath' (Default) - Calibrated natural architectural bathroom lighting
+      this.scene.background.set('#e5e1d8');
       this.hemiLight.color.set('#fff8ec');
-      this.hemiLight.groundColor.set('#cfc4b4');
-      this.hemiLight.intensity = 0.75;
-      this.keyLight.color.set('#fff3df');
-      this.keyLight.intensity = 2.2;
-      this.fillLight.color.set('#eddcc8');
-      this.fillLight.intensity = 0.7;
-      this.rimLight.intensity = 0.55;
-      this.renderer.toneMappingExposure = 1.12;
+      this.hemiLight.groundColor.set('#c8beae');
+      this.hemiLight.intensity = 0.56;
+      this.keyLight.color.set('#fff5e4');
+      this.keyLight.intensity = 1.88;
+      this.fillLight.color.set('#eadbc6');
+      this.fillLight.intensity = 0.55;
+      this.rimLight.intensity = 0.42;
+      this.renderer.toneMappingExposure = 0.96;
       if (this.bloomPass) {
-        this.bloomPass.strength = 0.32;
-        this.bloomPass.radius = 0.45;
+        this.bloomPass.strength = 0.09;
+        this.bloomPass.radius = 0.28;
+        this.bloomPass.threshold = 1.15;
       }
       if (this.hdrMaps?.warm) {
         this.scene.environment = this.hdrMaps.warm;
       }
-      if (this.roomBuilder) this.roomBuilder.setSconceLightIntensity(1.0);
+      this.roomBuilder?.setSconceLightIntensity(0.55);
     }
   }
 
@@ -670,7 +696,6 @@ export class VanitySceneManager {
     this.mixer.addEventListener('finished', (e) => {
       const clipName = e.action.getClip().name;
       if (clipName.endsWith('_Close')) {
-        // Stop action so it leaves zero residual weight on the mixer
         e.action.stop();
         if (clipName === 'Drawer01_Close' && this.d1Node) this.d1Node.position.copy(D1_CLOSED_POS);
         if (clipName === 'Drawer02_Close' && this.d2Node) this.d2Node.position.copy(D2_CLOSED_POS);
@@ -713,6 +738,8 @@ export class VanitySceneManager {
   }
 
   toggleDrawer(id) {
+    this.lastInteractionTime = performance.now();
+    this.controls.autoRotate = false;
     if (id === 1 || id === 'd1') {
       this.drawerState.d1Open = !this.drawerState.d1Open;
       this.playDrawerAction(this.drawerState.d1Open ? 'Drawer01_Open' : 'Drawer01_Close');
@@ -731,6 +758,32 @@ export class VanitySceneManager {
     } else if (id === 'R2') {
       this.drawerState.r2Open = !this.drawerState.r2Open;
       this.playDrawerAction(this.drawerState.r2Open ? 'Drawer_R2_Open' : 'Drawer_R2_Close');
+    }
+  }
+
+  setAllDrawers(open) {
+    this.lastInteractionTime = performance.now();
+    this.controls.autoRotate = false;
+    const isDouble = Boolean(this.dL1Node && this.dR1Node);
+    if (isDouble) {
+      if (this.drawerState.l1Open !== open) this.toggleDrawer('L1');
+      if (this.drawerState.l2Open !== open) this.toggleDrawer('L2');
+      if (this.drawerState.r1Open !== open) this.toggleDrawer('R1');
+      if (this.drawerState.r2Open !== open) this.toggleDrawer('R2');
+    } else {
+      if (this.drawerState.d1Open !== open) this.toggleDrawer('d1');
+      if (this.drawerState.d2Open !== open) this.toggleDrawer('d2');
+    }
+  }
+
+  openLowerDrawerForInspection() {
+    this.lastInteractionTime = performance.now();
+    this.controls.autoRotate = false;
+    const isDouble = Boolean(this.dL1Node && this.dR1Node);
+    if (isDouble) {
+      if (!this.drawerState.l2Open) this.toggleDrawer('L2');
+    } else if (!this.drawerState.d2Open) {
+      this.toggleDrawer('d2');
     }
   }
 
@@ -764,20 +817,44 @@ export class VanitySceneManager {
   }
 
   _notifyDrawerState() {
-    if (this.callbacks.onDrawerStateChange) {
-      this.callbacks.onDrawerStateChange({ ...this.drawerState });
-    }
+    this.callbacks.onDrawerStateChange?.({ ...this.drawerState });
   }
 
-  setCameraPreset(presetName) {
+  _getPresetTransform(presetName) {
     const preset = CAMERA_PRESETS[presetName] || CAMERA_PRESETS.threeQuarter;
-    this.cameraTween = {
-      targetPos: preset.pos.clone(),
+    const factor = WIDTH_DIST_FACTORS[this.activeWidthId] || 1.0;
+    const offset = preset.pos.clone().sub(preset.target);
+    // Detail preset keeps tight focal distance regardless of cabinet width
+    const scaledOffset = presetName === 'detail' ? offset : offset.multiplyScalar(factor);
+    return {
+      targetPos: preset.target.clone().add(scaledOffset),
       targetLook: preset.target.clone(),
     };
   }
 
+  setCameraPreset(presetName, immediate = false) {
+    this.activePreset = presetName || 'threeQuarter';
+    this.lastInteractionTime = performance.now();
+    this.controls.autoRotate = false;
+
+    const { targetPos, targetLook } = this._getPresetTransform(this.activePreset);
+    if (immediate) {
+      this.cameraTween = null;
+      this.camera.position.copy(targetPos);
+      this.controls.target.copy(targetLook);
+      this.controls.update();
+    } else {
+      this.cameraTween = { targetPos, targetLook };
+    }
+  }
+
+  resetCamera() {
+    this.setCameraPreset('threeQuarter');
+  }
+
   zoom(factor) {
+    this.lastInteractionTime = performance.now();
+    this.controls.autoRotate = false;
     const offset = this.camera.position.clone().sub(this.controls.target);
     const currentDist = offset.length();
     const nextDist = THREE.MathUtils.clamp(
@@ -792,6 +869,53 @@ export class VanitySceneManager {
     };
   }
 
+  setHotspotElements(elMap) {
+    this.hotspotElements = elMap || {};
+  }
+
+  _getHotspotWorldAnchors() {
+    const widthOpt = WIDTH_OPTIONS.find((w) => w.id === this.activeWidthId) || WIDTH_OPTIONS[1];
+    const halfW = (widthOpt.topWidthMm / 1000.0) / 2.0;
+    const isDouble = this.activeWidthId === '61';
+    return {
+      finish: new THREE.Vector3(-halfW * 0.56, 0.34, 0.255),
+      hardware: new THREE.Vector3(isDouble ? -0.26 : 0.145, 0.523, 0.275),
+      countertop: new THREE.Vector3(halfW * 0.52, 0.878, 0.14),
+      faucet: new THREE.Vector3(isDouble ? 0.38 : 0.0, 0.985, -0.115),
+      mirror: new THREE.Vector3(isDouble ? 0.46 : 0.24, 1.32, -0.205),
+    };
+  }
+
+  _updateHotspotPositions() {
+    if (!this.hotspotElements || !this.renderer?.domElement) return;
+    const w = this.container?.clientWidth || 0;
+    const h = this.container?.clientHeight || 0;
+    if (w === 0 || h === 0) return;
+
+    const anchors = this._getHotspotWorldAnchors();
+    Object.entries(this.hotspotElements).forEach(([key, el]) => {
+      if (!el || !anchors[key]) return;
+      this._projVec.copy(anchors[key]).project(this.camera);
+      const outOfBounds =
+        this._projVec.z > 1 ||
+        this._projVec.z < -1 ||
+        this._projVec.x < -0.96 ||
+        this._projVec.x > 0.96 ||
+        this._projVec.y < -0.92 ||
+        this._projVec.y > 0.92;
+      if (outOfBounds) {
+        el.style.opacity = '0';
+        el.style.pointerEvents = 'none';
+        return;
+      }
+      const px = Math.round((this._projVec.x * 0.5 + 0.5) * w);
+      const py = Math.round((-this._projVec.y * 0.5 + 0.5) * h);
+      el.style.opacity = '1';
+      el.style.pointerEvents = 'auto';
+      el.style.transform = `translate3d(${px}px, ${py}px, 0) translate(-50%, -50%)`;
+    });
+  }
+
   captureSnapshot() {
     if (this.composer) {
       this.composer.render();
@@ -803,25 +927,35 @@ export class VanitySceneManager {
 
   _animate() {
     if (this.isDisposed) return;
-    requestAnimationFrame(() => this._animate());
+    this._rafId = requestAnimationFrame(() => this._animate());
 
     const delta = Math.min(this.clock.getDelta(), 0.1);
     if (this.mixer) {
       this.mixer.update(delta);
     }
 
-    // Auto-rotate turntable after 6.5s of idle inactivity
+    // Clamp pan target so the vanity never disappears off-screen
+    this.controls.target.x = THREE.MathUtils.clamp(this.controls.target.x, -0.65, 0.65);
+    this.controls.target.y = THREE.MathUtils.clamp(this.controls.target.y, 0.25, 1.45);
+    this.controls.target.z = THREE.MathUtils.clamp(this.controls.target.z, -0.30, 0.45);
+
+    const anyDrawerOpen = Object.values(this.drawerState).some(Boolean);
     const now = performance.now();
-    if (now - this.lastInteractionTime > 6500 && !this.cameraTween) {
+    if (
+      now - this.lastInteractionTime > 9000 &&
+      !this.cameraTween &&
+      !anyDrawerOpen &&
+      this.activePreset === 'threeQuarter'
+    ) {
       this.controls.autoRotate = true;
-      this.controls.autoRotateSpeed = 0.55;
+      this.controls.autoRotateSpeed = 0.45;
     } else {
       this.controls.autoRotate = false;
     }
 
     if (this.cameraTween) {
-      this.camera.position.lerp(this.cameraTween.targetPos, 0.08);
-      this.controls.target.lerp(this.cameraTween.targetLook, 0.08);
+      this.camera.position.lerp(this.cameraTween.targetPos, 0.10);
+      this.controls.target.lerp(this.cameraTween.targetLook, 0.10);
       if (
         this.camera.position.distanceTo(this.cameraTween.targetPos) < 0.003 &&
         this.controls.target.distanceTo(this.cameraTween.targetLook) < 0.003
@@ -836,10 +970,14 @@ export class VanitySceneManager {
     } else {
       this.renderer.render(this.scene, this.camera);
     }
+    this._updateHotspotPositions();
   }
 
   dispose() {
     this.isDisposed = true;
+    if (this._rafId !== null) {
+      cancelAnimationFrame(this._rafId);
+    }
     this.resizeObserver?.disconnect();
     const dom = this.renderer.domElement;
     dom.removeEventListener('pointerdown', this._onPointerDown);
@@ -852,6 +990,10 @@ export class VanitySceneManager {
       this.hdrMaps.studio?.dispose();
       this.hdrMaps.warm?.dispose();
     }
+    this._cleanupCurrentModel();
+    this.roomBuilder?.dispose();
+    this.accessoryBuilder?.dispose();
+    this.dimensionOverlay?.dispose();
     this.composer?.dispose();
     this.renderer.dispose();
     if (dom.parentNode) {

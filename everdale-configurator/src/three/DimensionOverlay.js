@@ -3,14 +3,7 @@ import { WIDTH_OPTIONS } from '../config/productConfig';
 
 /**
  * Architectural 3D Dimension Lines & High-DPI Floating Callout Badges
- * dynamically anchored to the active vanity width:
- * 24" -> 25" Top (635 mm)
- * 31" -> 31" Top (787.4 mm)
- * 37" -> 37" Top (939.8 mm)
- * 49" -> 49" Top (1244.6 mm)
- * 61" -> 61" Top (1549.4 mm)
- * Depth: 19" (482.6 mm)
- * Height: 34" (863.6 mm) / 38" w/ 4" Backsplash (965.2 mm)
+ * dynamically anchored to the active vanity variant (overall top vs cabinet body).
  */
 export class DimensionOverlay {
   constructor() {
@@ -21,7 +14,7 @@ export class DimensionOverlay {
     this.lineMat = new THREE.LineBasicMaterial({
       color: '#1b2b25',
       transparent: true,
-      opacity: 0.88,
+      opacity: 0.90,
       depthTest: false,
     });
 
@@ -32,13 +25,12 @@ export class DimensionOverlay {
 
   _createLabelSprite(text, subtext = '') {
     const canvas = document.createElement('canvas');
-    const w = 320;
-    const h = 92;
+    const w = 340;
+    const h = 94;
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext('2d');
 
-    // Rounded pill card
     const r = 18;
     ctx.fillStyle = 'rgba(20, 28, 25, 0.92)';
     ctx.beginPath();
@@ -54,19 +46,19 @@ export class DimensionOverlay {
     ctx.closePath();
     ctx.fill();
 
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
     ctx.lineWidth = 2.5;
     ctx.stroke();
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = '700 32px Inter, sans-serif';
+    ctx.font = '700 30px Inter, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(text, w / 2, subtext ? 37 : h / 2);
+    ctx.fillText(text, w / 2, subtext ? 36 : h / 2);
 
     if (subtext) {
-      ctx.fillStyle = '#b9ccc2';
-      ctx.font = '500 20px Inter, sans-serif';
+      ctx.fillStyle = '#c5d6cd';
+      ctx.font = '500 19px Inter, sans-serif';
       ctx.fillText(subtext, w / 2, 66);
     }
 
@@ -78,7 +70,7 @@ export class DimensionOverlay {
       depthTest: false,
     });
     const sprite = new THREE.Sprite(spriteMat);
-    sprite.scale.set(0.24, 0.069, 1);
+    sprite.scale.set(0.25, 0.069, 1);
     sprite.renderOrder = 999;
     return sprite;
   }
@@ -105,7 +97,7 @@ export class DimensionOverlay {
     this.root.add(label);
   }
 
-  _rebuild(hasBacksplash, widthId = '31') {
+  _clear() {
     while (this.root.children.length > 0) {
       const child = this.root.children[0];
       if (child.geometry) child.geometry.dispose();
@@ -113,6 +105,10 @@ export class DimensionOverlay {
       if (child.material && child.material !== this.lineMat) child.material.dispose();
       this.root.remove(child);
     }
+  }
+
+  _rebuild(hasBacksplash, widthId = '31') {
+    this._clear();
 
     const widthOpt = WIDTH_OPTIONS.find((w) => w.id === widthId) || WIDTH_OPTIONS[1];
     const halfW = (widthOpt.topWidthMm / 1000.0) / 2.0;
@@ -120,13 +116,13 @@ export class DimensionOverlay {
     const topY = 0.8636; // 34"
     const bsTopY = 0.9652; // 38"
 
-    // 1. Overall Width along front floor edge
+    // 1. Overall Top Width (and Cabinet Base Width subtext)
     this._addDimensionSegment(
       new THREE.Vector3(-halfW, 0.02, halfD + 0.095),
       new THREE.Vector3(halfW, 0.02, halfD + 0.095),
       new THREE.Vector3(0, 0, 1),
-      `${widthOpt.topWidthIn}″ W`,
-      `${Math.round(widthOpt.topWidthMm)} mm`,
+      `${widthOpt.topWidthIn}″ Top (${widthOpt.baseWidthIn}″ Base)`,
+      `${widthOpt.topWidthMm} mm overall`,
       new THREE.Vector3(0, 0.04, 0.02)
     );
 
@@ -136,7 +132,7 @@ export class DimensionOverlay {
       new THREE.Vector3(halfW + 0.085, topY + 0.01, halfD),
       new THREE.Vector3(1, 0, 0),
       '19″ D',
-      '483 mm',
+      '482.6 mm',
       new THREE.Vector3(0.08, 0.04, 0)
     );
 
@@ -146,7 +142,7 @@ export class DimensionOverlay {
       new THREE.Vector3(-halfW - 0.085, topY, halfD),
       new THREE.Vector3(1, 0, 0),
       '34″ H',
-      '864 mm',
+      '863.6 mm',
       new THREE.Vector3(-0.08, 0, 0.02)
     );
 
@@ -157,7 +153,7 @@ export class DimensionOverlay {
         new THREE.Vector3(-halfW - 0.085, bsTopY, -halfD + 0.01),
         new THREE.Vector3(1, 0, 0),
         '+4″ BS',
-        '38″ Total',
+        '38″ (965.2 mm)',
         new THREE.Vector3(-0.095, 0.02, 0.02)
       );
     }
@@ -173,5 +169,10 @@ export class DimensionOverlay {
     if (this._lastBacksplash !== hasBs || this._lastWidth !== widthId) {
       this._rebuild(hasBs, widthId);
     }
+  }
+
+  dispose() {
+    this._clear();
+    this.lineMat.dispose();
   }
 }

@@ -1,60 +1,81 @@
 import React from 'react';
 import {
-  ArrowLeft,
+  Bookmark,
   HelpCircle,
   QrCode,
   ShoppingBag,
 } from 'lucide-react';
-import { BRAND_CONFIG, PRODUCT_BASE, WIDTH_OPTIONS } from '../config/productConfig';
+import { BRAND_CONFIG, CatalogService } from '../catalog/index';
 
 export default function Header({
   config,
+  activeVariant,
   cartCount,
+  isSaved,
   onOpenCart,
   onOpenHelp,
   onOpenScan,
-  onShowToast,
+  onToggleSave,
 }) {
-  const activeWidth = WIDTH_OPTIONS.find((w) => w.id === config?.width) || WIDTH_OPTIONS[1];
-  const dynamicTitle = activeWidth
-    ? `Everdale ${activeWidth.label} ${activeWidth.basinCount === 2 ? 'Double' : 'Single'} Vanity`
-    : PRODUCT_BASE.name;
+  const product = CatalogService.getProduct(config?.product || 'everdale-vanity');
+  const variant = activeVariant || CatalogService.getVariant(config?.width || '31');
+  const isSeries = (product?.sellingCategory || config?.purchaseMode) === 'series';
+
+  const dynamicTitle = variant
+    ? isSeries
+      ? `Everdale ${variant.baseWidthIn}″ Cabinet Series`
+      : `Everdale ${variant.label} ${variant.basinCount === 2 ? 'Double' : 'Single'} Vanity`
+    : product?.name || 'Everdale Bathroom Vanity';
+
   return (
     <header className="app-header">
       <div className="header-left">
-        <button
-          type="button"
-          className="header-link-btn"
-          onClick={() => onShowToast('Viewing Everdale 31″ Vanity in catalog')}
-        >
-          <ArrowLeft size={16} />
-          <span className="header-hide-mobile">Back to all vanities</span>
-        </button>
+        <div className="header-brand-lockup">
+          <span className="header-brand-mark">{BRAND_CONFIG.brandName}</span>
+          <span className="header-series-divider header-hide-mobile">·</span>
+          <span className="header-series-label header-hide-mobile">
+            {isSeries ? 'Series' : 'Combo'}
+          </span>
+        </div>
 
         <button
           type="button"
-          className="header-outline-btn header-hide-mobile"
+          className="header-outline-btn header-sku-trigger"
           onClick={onOpenScan}
+          title="Load variant configuration by showroom SKU"
+          aria-label="Lookup showroom SKU"
         >
-          <QrCode size={15} />
-          <span>Scan a vanity tag</span>
+          <QrCode size={14} />
+          <span className="sku-btn-desktop">SKU Lookup</span>
+          <span className="sku-btn-mobile">SKU</span>
         </button>
       </div>
 
       <div className="header-center">
-        <span className="header-brand">{BRAND_CONFIG.brandName}</span>
         <span className="header-title">{dynamicTitle}</span>
+        {variant && <span className="header-sku-pill">SKU {variant.sku}</span>}
       </div>
 
       <div className="header-right">
         <button
           type="button"
+          className={`header-link-btn header-hide-mobile ${isSaved ? 'saved-active' : ''}`}
+          onClick={onToggleSave}
+          aria-pressed={isSaved}
+          title={isSaved ? 'Configuration saved' : 'Save configuration'}
+        >
+          <Bookmark size={15} fill={isSaved ? 'currentColor' : 'none'} />
+          <span>{isSaved ? 'Saved' : 'Save'}</span>
+        </button>
+
+        <button
+          type="button"
           className="header-outline-btn"
           onClick={onOpenCart}
-          aria-label="Open shopping cart"
+          aria-label="Open project bag and quote summary"
         >
           <ShoppingBag size={15} />
-          <span className="header-hide-mobile">Cart</span>
+          <span className="header-hide-mobile">Bag</span>
           {cartCount > 0 && <span className="cart-badge-pill">{cartCount}</span>}
         </button>
 
@@ -62,10 +83,10 @@ export default function Header({
           type="button"
           className="header-link-btn"
           onClick={onOpenHelp}
-          aria-label="Help and controls"
+          aria-label="Viewer guide and controls"
         >
-          <HelpCircle size={17} />
-          <span className="header-hide-mobile">Help</span>
+          <HelpCircle size={16} />
+          <span className="header-hide-mobile">Guide</span>
         </button>
       </div>
     </header>

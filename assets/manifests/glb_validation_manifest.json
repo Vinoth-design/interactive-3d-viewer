@@ -1,0 +1,142 @@
+{
+  "Everdale_24_Vanity_Interactive.glb": {
+    "source": "Everdale_Vanity_24_v001.blend",
+    "target_width_mm": 635.0,
+    "measured_bbox_mm": [
+      635.0,
+      782.4,
+      1092.7
+    ],
+    "width_variance_mm": 0.0,
+    "file_size_kb": 120.91,
+    "total_nodes": 44,
+    "mesh_count": 40,
+    "materials": [
+      "MAT_Antique_Brass",
+      "MAT_Drawer_Interior",
+      "MAT_Engineered_Stone_White",
+      "MAT_Evergreen_Fog",
+      "MAT_Slide_Steel",
+      "MAT_Solid_Wood_Legs"
+    ],
+    "animations": [
+      "Drawer01_Close",
+      "Drawer01_Open",
+      "Drawer02_Close",
+      "Drawer02_Open"
+    ],
+    "status": "PASSED"
+  },
+  "Everdale_31_Vanity_Interactive.glb": {
+    "source": "Everdale_Vanity_31_v001.blend",
+    "target_width_mm": 787.4,
+    "measured_bbox_mm": [
+      787.4,
+      782.4,
+      1092.7
+    ],
+    "width_variance_mm": 0.0,
+    "file_size_kb": 119.23,
+    "total_nodes": 45,
+    "mesh_count": 40,
+    "materials": [
+      "MAT_Antique_Brass",
+      "MAT_Drawer_Interior",
+      "MAT_Engineered_Stone_White",
+      "MAT_Evergreen_Fog",
+      "MAT_Slide_Steel",
+      "MAT_Solid_Wood_Legs"
+    ],
+    "animations": [
+      "Drawer01_Close",
+      "Drawer01_Open",
+      "Drawer02_Close",
+      "Drawer02_Open"
+    ],
+    "status": "PASSED"
+  },
+  "Everdale_37_Vanity_Interactive.glb": {
+    "source": "Everdale_Vanity_37_v001.blend",
+    "target_width_mm": 939.8,
+    "measured_bbox_mm": [
+      939.8,
+      782.4,
+      1092.7
+    ],
+    "width_variance_mm": 0.0,
+    "file_size_kb": 121.33,
+    "total_nodes": 44,
+    "mesh_count": 40,
+    "materials": [
+      "MAT_Antique_Brass",
+      "MAT_Drawer_Interior",
+      "MAT_Engineered_Stone_White",
+      "MAT_Evergreen_Fog",
+      "MAT_Slide_Steel",
+      "MAT_Solid_Wood_Legs"
+    ],
+    "animations": [
+      "Drawer01_Close",
+      "Drawer01_Open",
+      "Drawer02_Close",
+      "Drawer02_Open"
+    ],
+    "status": "PASSED"
+  },
+  "Everdale_49_Vanity_Interactive.glb": {
+    "source": "Everdale_Vanity_49_v001.blend",
+    "target_width_mm": 1244.6,
+    "measured_bbox_mm": [
+      1244.6,
+      782.4,
+      1092.7
+    ],
+    "width_variance_mm": 0.0,
+    "file_size_kb": 121.28,
+    "total_nodes": 44,
+    "mesh_count": 40,
+    "materials": [
+      "MAT_Antique_Brass",
+      "MAT_Drawer_Interior",
+      "MAT_Engineered_Stone_White",
+      "MAT_Evergreen_Fog",
+      "MAT_Slide_Steel",
+      "MAT_Solid_Wood_Legs"
+    ],
+    "animations": [
+      "Drawer01_Close",
+      "Drawer01_Open",
+      "Drawer02_Close",
+      "Drawer02_Open"
+    ],
+    "status": "PASSED"
+  },
+  "Everdale_61_Vanity_Interactive.glb": {
+    "source": "Everdale_Vanity_61_v001.blend",
+    "target_width_mm": 1549.4,
+    "measured_bbox_mm": [
+      1549.4,
+      782.4,
+      1092.7
+    ],
+    "width_variance_mm": 0.0,
+    "file_size_kb": 159.73,
+    "total_nodes": 45,
+    "mesh_count": 40,
+    "materials": [
+      "MAT_Antique_Brass",
+      "MAT_Drawer_Interior",
+      "MAT_Engineered_Stone_White",
+      "MAT_Evergreen_Fog",
+      "MAT_Slide_Steel",
+      "MAT_Solid_Wood_Legs"
+    ],
+    "animations": [
+      "Drawer01_Close",
+      "Drawer01_Open",
+      "Drawer02_Close",
+      "Drawer02_Open"
+    ],
+    "status": "PASSED"
+  }
+}

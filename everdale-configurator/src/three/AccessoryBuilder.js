@@ -5,10 +5,11 @@ import {
   MIRROR_FRAMES_METAL,
   MIRROR_FRAMES_WOOD,
 } from '../config/productConfig';
+import { getBrushedMetalNormal, getWoodTextures } from '../utils/proceduralTextures';
 
 /**
  * Builds procedural PBR 3D mirrors and 4" centerset faucet + pop-up drain
- * aligned to the exact millimeter coordinates of Everdale_31_Vanity_Interactive.glb.
+ * aligned to the exact millimeter coordinates of the Everdale Vanity GLBs.
  */
 export class AccessoryBuilder {
   constructor() {
@@ -23,17 +24,22 @@ export class AccessoryBuilder {
     this.root.add(this.faucetGroup);
     this.root.add(this.mirrorGroup);
 
+    const brushedNormal = getBrushedMetalNormal();
+
     this.faucetMetalMat = new THREE.MeshStandardMaterial({
       color: '#b08b4f',
       metalness: 0.88,
       roughness: 0.30,
+      normalMap: brushedNormal,
+      normalScale: new THREE.Vector2(0.35, 0.35),
+      envMapIntensity: 1.15,
     });
 
     this.mirrorGlassMat = new THREE.MeshStandardMaterial({
-      color: '#eef3f6',
-      metalness: 0.96,
+      color: '#e6edf1',
+      metalness: 0.94,
       roughness: 0.04,
-      envMapIntensity: 1.35,
+      envMapIntensity: 1.1,
     });
 
     this.mirrorFrameMat = new THREE.MeshStandardMaterial({
@@ -42,14 +48,21 @@ export class AccessoryBuilder {
       roughness: 0.42,
     });
 
+    this.mirrorBackingMat = new THREE.MeshStandardMaterial({
+      color: '#2b2d30',
+      roughness: 0.9,
+    });
+
     this.ledHaloMat = new THREE.MeshStandardMaterial({
       color: '#fff6e4',
       emissive: '#ffe9be',
-      emissiveIntensity: 1.5,
-      roughness: 0.2,
+      emissiveIntensity: 1.05,
+      roughness: 0.25,
     });
 
     this._lastFaucetWidth = null;
+    this._lastMirrorType = null;
+    this._lastMirrorWidth = null;
     this._buildCentersetFaucets([0]);
   }
 
@@ -60,7 +73,6 @@ export class AccessoryBuilder {
     const mat = this.faucetMetalMat;
 
     xOffsets.forEach((cx) => {
-      // 1. Sculpted 4" centerset escutcheon base plate
       const plateShape = new THREE.Shape();
       const pw = 0.076;
       const pd = 0.024;
@@ -89,7 +101,6 @@ export class AccessoryBuilder {
       plate.receiveShadow = true;
       this.faucetGroup.add(plate);
 
-      // 2. Center spout pedestal collar
       const pedestal = new THREE.Mesh(
         new THREE.CylinderGeometry(0.015, 0.018, 0.042, 24),
         mat
@@ -98,7 +109,6 @@ export class AccessoryBuilder {
       pedestal.castShadow = true;
       this.faucetGroup.add(pedestal);
 
-      // 3. Smooth high-arc gooseneck spout
       const spoutCurve = new THREE.CatmullRomCurve3([
         new THREE.Vector3(cx, deckY + 0.042, holeZ),
         new THREE.Vector3(cx, deckY + 0.132, holeZ + 0.006),
@@ -111,7 +121,6 @@ export class AccessoryBuilder {
       spout.castShadow = true;
       this.faucetGroup.add(spout);
 
-      // Aerator nozzle collar
       const nozzle = new THREE.Mesh(
         new THREE.CylinderGeometry(0.0115, 0.0105, 0.014, 20),
         mat
@@ -120,7 +129,6 @@ export class AccessoryBuilder {
       nozzle.rotation.x = 0.22;
       this.faucetGroup.add(nozzle);
 
-      // 4. Hot & Cold side valve stems & lever handles
       [-0.0508, 0.0508].forEach((xRel) => {
         const sign = Math.sign(xRel);
         const xPos = cx + xRel;
@@ -132,10 +140,7 @@ export class AccessoryBuilder {
         stem.castShadow = true;
         this.faucetGroup.add(stem);
 
-        const cap = new THREE.Mesh(
-          new THREE.SphereGeometry(0.0125, 18, 12),
-          mat
-        );
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.0125, 18, 12), mat);
         cap.position.set(xPos, deckY + 0.044, holeZ);
         this.faucetGroup.add(cap);
 
@@ -149,7 +154,6 @@ export class AccessoryBuilder {
         this.faucetGroup.add(lever);
       });
 
-      // 5. Matching Pop-Up Drain Flange & Cap
       const drainFlange = new THREE.Mesh(
         new THREE.CylinderGeometry(0.024, 0.022, 0.004, 24),
         mat
@@ -169,7 +173,9 @@ export class AccessoryBuilder {
   _clearGroup(group) {
     while (group.children.length > 0) {
       const child = group.children[0];
-      if (child.geometry) child.geometry.dispose();
+      child.traverse((obj) => {
+        if (obj.geometry) obj.geometry.dispose();
+      });
       group.remove(child);
     }
   }
@@ -178,7 +184,7 @@ export class AccessoryBuilder {
     this._clearGroup(this.mirrorGroup);
     if (!mirrorType || mirrorType === 'none') return;
 
-    const wallZ = -0.2415; // Flush on rear bathroom wall
+    const wallZ = -0.2415;
     const centerY = 1.49;
     const isDouble = xOffsets.length > 1;
 
@@ -215,7 +221,7 @@ export class AccessoryBuilder {
 
         const backing = new THREE.Mesh(
           new THREE.BoxGeometry(w - 0.02, h - 0.02, 0.008),
-          new THREE.MeshStandardMaterial({ color: '#2b2d30', roughness: 0.9 })
+          this.mirrorBackingMat
         );
         backing.position.set(cx, centerY, wallZ + 0.005);
 
@@ -338,7 +344,7 @@ export class AccessoryBuilder {
         const ledStrip = new THREE.Mesh(new THREE.ShapeGeometry(stripShape), this.ledHaloMat);
         ledStrip.position.set(cx, centerY, wallZ + 0.0328);
 
-        const glowLight = new THREE.PointLight('#fff1d6', 0.55, 1.4, 2);
+        const glowLight = new THREE.PointLight('#fff1d6', 0.4, 1.4, 2);
         glowLight.position.set(cx, centerY, wallZ + 0.08);
 
         this.mirrorGroup.add(haloBox, glass, ledStrip, glowLight);
@@ -350,7 +356,6 @@ export class AccessoryBuilder {
     const isDouble = config.width === '61';
     const xOffsets = isDouble ? [-0.381, 0.381] : [0];
 
-    // 1. Faucet visibility & metallic finish
     this.faucetGroup.visible = config.faucet === 'centerset-4';
     if (this._lastFaucetWidth !== config.width) {
       this._buildCentersetFaucets(xOffsets);
@@ -365,30 +370,58 @@ export class AccessoryBuilder {
     this.faucetMetalMat.color.set(hw.hex);
     this.faucetMetalMat.metalness = hw.metalness;
     this.faucetMetalMat.roughness = hw.roughness;
+    this.faucetMetalMat.normalMap = hw.id === 'matte-black' ? null : getBrushedMetalNormal();
+    this.faucetMetalMat.needsUpdate = true;
 
-    // 2. Mirror geometry rebuild only when type or width layout changes
     if (this._lastMirrorType !== config.mirror || this._lastMirrorWidth !== config.width) {
       this._buildMirrorMesh(config.mirror, xOffsets);
       this._lastMirrorType = config.mirror;
       this._lastMirrorWidth = config.width;
     }
 
-    // 3. Mirror frame material update
     if (config.mirror === 'rectangle') {
       const frame = MIRROR_FRAMES_WOOD.find((f) => f.id === config.frame) || MIRROR_FRAMES_WOOD[0];
-      if (frame.dynamicMatch) {
-        const cab = CABINET_FINISHES.find((c) => c.id === config.finish) || CABINET_FINISHES[0];
-        this.mirrorFrameMat.color.set(cab.hex);
+      const cab = CABINET_FINISHES.find((c) => c.id === config.finish) || CABINET_FINISHES[0];
+      const useWood =
+        frame.woodKey ||
+        (frame.dynamicMatch && cab.finishType === 'wood' ? cab.id : null);
+
+      if (useWood) {
+        const woodTex = getWoodTextures(useWood === 'warm-walnut' ? 'walnut' : useWood);
+        this.mirrorFrameMat.map = woodTex.map;
+        this.mirrorFrameMat.normalMap = woodTex.normalMap;
+        this.mirrorFrameMat.roughnessMap = woodTex.roughnessMap;
+        this.mirrorFrameMat.color.set('#ffffff');
+        this.mirrorFrameMat.metalness = 0.02;
+        this.mirrorFrameMat.roughness = 0.52;
       } else {
-        this.mirrorFrameMat.color.set(frame.hex);
+        this.mirrorFrameMat.map = null;
+        this.mirrorFrameMat.normalMap = null;
+        this.mirrorFrameMat.roughnessMap = null;
+        this.mirrorFrameMat.color.set(frame.dynamicMatch ? cab.hex : frame.hex);
+        this.mirrorFrameMat.metalness = 0.04;
+        this.mirrorFrameMat.roughness = 0.42;
       }
-      this.mirrorFrameMat.metalness = 0.04;
-      this.mirrorFrameMat.roughness = 0.42;
+      this.mirrorFrameMat.needsUpdate = true;
     } else if (config.mirror === 'arched' || config.mirror === 'round') {
       const frame = MIRROR_FRAMES_METAL.find((f) => f.id === config.frame) || MIRROR_FRAMES_METAL[0];
+      this.mirrorFrameMat.map = null;
+      this.mirrorFrameMat.roughnessMap = null;
+      this.mirrorFrameMat.normalMap = frame.id === 'matte-black' ? null : getBrushedMetalNormal();
       this.mirrorFrameMat.color.set(frame.hex);
       this.mirrorFrameMat.metalness = frame.metalness;
       this.mirrorFrameMat.roughness = frame.roughness;
+      this.mirrorFrameMat.needsUpdate = true;
     }
+  }
+
+  dispose() {
+    this._clearGroup(this.faucetGroup);
+    this._clearGroup(this.mirrorGroup);
+    this.faucetMetalMat.dispose();
+    this.mirrorGlassMat.dispose();
+    this.mirrorFrameMat.dispose();
+    this.mirrorBackingMat.dispose();
+    this.ledHaloMat.dispose();
   }
 }

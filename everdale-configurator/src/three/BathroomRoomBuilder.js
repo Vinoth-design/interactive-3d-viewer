@@ -1,39 +1,58 @@
 import * as THREE from 'three';
-import { getFloorTexture, getWallTexture } from '../utils/proceduralTextures';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import {
+  getBrushedMetalNormal,
+  getFabricPBR,
+  getFloorPBR,
+  getWallPBR,
+  getWoodTextures,
+} from '../utils/proceduralTextures';
 
 /**
- * Builds the architectural bathroom room staging (back wall, baseboard, floor, contact shadow)
- * and dynamically responsive styling props (wall sconces, soap dispenser, candle, eucalyptus vase,
- * woven towel basket, and bath mat) positioned adaptively for 24", 31", 37", 49", and 61" vanities.
+ * Builds the photorealistic architectural bathroom room staging (PBR wall, baseboard, PBR floor,
+ * contact shadow) and loads real Poly Haven CC0 & Blender-modeled 3D styling props
+ * positioned adaptively across 24", 31", 37", 49", and 61" vanities.
  */
 export class BathroomRoomBuilder {
   constructor() {
     this.root = new THREE.Group();
     this.root.name = 'Bathroom_Room_Group';
+    this.isDisposed = false;
+    this.gltfLoader = new GLTFLoader();
 
     this.wallMat = new THREE.MeshStandardMaterial({
-      color: '#ffffff',
-      roughness: 0.85,
-      metalness: 0.02,
+      color: '#ded9d0',
+      roughness: 0.82,
+      metalness: 0.0,
+      envMapIntensity: 0.45,
     });
 
     this.floorMat = new THREE.MeshStandardMaterial({
-      color: '#ffffff',
-      roughness: 0.55,
-      metalness: 0.04,
+      color: '#f4f2ee',
+      roughness: 0.44,
+      metalness: 0.02,
+      envMapIntensity: 0.65,
     });
 
     this.sconceMetalMat = new THREE.MeshStandardMaterial({
       color: '#b08b4f',
       metalness: 0.88,
-      roughness: 0.30,
+      roughness: 0.28,
+      normalMap: getBrushedMetalNormal(),
+      normalScale: new THREE.Vector2(0.35, 0.35),
+      envMapIntensity: 1.15,
     });
 
-    this.globeMat = new THREE.MeshStandardMaterial({
-      color: '#fffcf6',
-      emissive: '#ffedd1',
-      emissiveIntensity: 0.85,
+    this.globeMat = new THREE.MeshPhysicalMaterial({
+      color: '#fffbf4',
+      emissive: '#ffe4b5',
+      emissiveIntensity: 0.56,
       roughness: 0.22,
+      transmission: 0.25,
+      thickness: 0.02,
+      ior: 1.48,
+      clearcoat: 0.35,
+      clearcoatRoughness: 0.15,
     });
 
     this.propsGroup = new THREE.Group();
@@ -48,15 +67,15 @@ export class BathroomRoomBuilder {
     this.propsGroup.add(this.soapGroup);
 
     this.candleGroup = new THREE.Group();
-    this.candleGroup.name = 'Candle_Group';
+    this.candleGroup.name = 'Diffuser_Prop_Group';
     this.propsGroup.add(this.candleGroup);
 
     this.vaseGroup = new THREE.Group();
-    this.vaseGroup.name = 'Vase_Group';
+    this.vaseGroup.name = 'Plant_Vase_Group';
     this.propsGroup.add(this.vaseGroup);
 
     this.basketGroup = new THREE.Group();
-    this.basketGroup.name = 'Basket_Group';
+    this.basketGroup.name = 'Stool_And_Basket_Group';
     this.propsGroup.add(this.basketGroup);
 
     this.bathMatGroup = new THREE.Group();
@@ -65,12 +84,13 @@ export class BathroomRoomBuilder {
 
     this.contactShadow = null;
     this.sconcePointLights = [];
+    this._loadedProps = [];
 
     this._lastWidth = null;
     this._lastMirror = null;
 
     this._buildRoomShell();
-    this._buildStaticModels();
+    this._loadPhotorealisticProps();
     this.root.add(this.propsGroup);
 
     this.updateLayout('31', 'rectangle');
@@ -78,38 +98,39 @@ export class BathroomRoomBuilder {
 
   _buildRoomShell() {
     // 1. Floor plane at Y = 0
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 5.0), this.floorMat);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(10.0, 8.0), this.floorMat);
     floor.rotation.x = -Math.PI / 2;
-    floor.position.set(0, 0, 1.4);
+    floor.position.set(0, 0, 2.4);
     floor.receiveShadow = true;
     this.root.add(floor);
 
     // 2. Back wall cleanly behind vanity/backsplash (Z = -0.244 m)
-    const backWall = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 3.4), this.wallMat);
-    backWall.position.set(0, 1.7, -0.244);
+    const backWall = new THREE.Mesh(new THREE.PlaneGeometry(10.0, 4.4), this.wallMat);
+    backWall.position.set(0, 2.2, -0.244);
     backWall.receiveShadow = true;
     this.root.add(backWall);
 
     // 3. Baseboard trim along back wall
     const baseboardMat = new THREE.MeshStandardMaterial({
-      color: '#f1f0ec',
+      color: '#eae7e0',
       roughness: 0.48,
-      metalness: 0.02,
+      metalness: 0.0,
+      envMapIntensity: 0.45,
     });
-    const baseboard = new THREE.Mesh(new THREE.BoxGeometry(6.4, 0.102, 0.012), baseboardMat);
-    baseboard.position.set(0, 0.051, -0.249);
+    const baseboard = new THREE.Mesh(new THREE.BoxGeometry(10.0, 0.102, 0.014), baseboardMat);
+    baseboard.position.set(0, 0.051, -0.247);
     baseboard.receiveShadow = true;
     this.root.add(baseboard);
 
-    // 4. Contact shadow under vanity
+    // 4. Soft grounded contact shadow beneath cabinet legs
     const shadowCanvas = document.createElement('canvas');
     shadowCanvas.width = 512;
     shadowCanvas.height = 256;
     const ctx = shadowCanvas.getContext('2d');
-    const grad = ctx.createRadialGradient(256, 128, 10, 256, 128, 240);
-    grad.addColorStop(0, 'rgba(20, 22, 24, 0.75)');
-    grad.addColorStop(0.4, 'rgba(30, 32, 34, 0.45)');
-    grad.addColorStop(0.8, 'rgba(40, 42, 44, 0.15)');
+    const grad = ctx.createRadialGradient(256, 128, 18, 256, 128, 240);
+    grad.addColorStop(0, 'rgba(18, 20, 22, 0.64)');
+    grad.addColorStop(0.45, 'rgba(26, 28, 30, 0.36)');
+    grad.addColorStop(0.82, 'rgba(34, 36, 38, 0.10)');
     grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 512, 256);
@@ -119,132 +140,158 @@ export class BathroomRoomBuilder {
       map: shadowTex,
       transparent: true,
       depthWrite: false,
-      opacity: 0.65,
+      opacity: 0.74,
     });
-    this.contactShadow = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.7), shadowMat);
+    this.contactShadow = new THREE.Mesh(new THREE.PlaneGeometry(1.18, 0.68), shadowMat);
     this.contactShadow.rotation.x = -Math.PI / 2;
     this.contactShadow.position.set(0, 0.0015, 0.0);
     this.root.add(this.contactShadow);
   }
 
-  _buildStaticModels() {
-    const deckY = 0.8636;
+  /**
+   * Centers X/Z, rests bounding-box bottom cleanly at Y = baseOffsetY, and scales to real-world target height.
+   */
+  _normalizeAndMount(obj, targetGroup, targetHeight, baseOffsetY = 0, onMaterial) {
+    obj.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(obj);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(center);
 
-    // --- Soap Dispenser Model ---
-    const ceramicMat = new THREE.MeshStandardMaterial({ color: '#e5dfd5', roughness: 0.62, metalness: 0.02 });
-    const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.030, 0.11, 24), ceramicMat);
-    bottle.position.y = deckY + 0.055;
-    bottle.castShadow = true;
-    bottle.receiveShadow = true;
+    const scale = targetHeight && size.y > 0.0001 ? targetHeight / size.y : 1.0;
 
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.010, 0.013, 0.020, 16), this.sconceMetalMat);
-    neck.position.y = deckY + 0.12;
+    const wrapper = new THREE.Group();
+    obj.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+    obj.scale.multiplyScalar(scale);
 
-    const pump = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.022, 12), this.sconceMetalMat);
-    pump.position.y = deckY + 0.14;
-
-    const spout = new THREE.Mesh(new THREE.BoxGeometry(0.007, 0.006, 0.028), this.sconceMetalMat);
-    spout.position.set(0, deckY + 0.148, 0.012);
-
-    this.soapGroup.add(bottle, neck, pump, spout);
-
-    // --- Amber Glass Candle ---
-    const candleJar = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.025, 0.024, 0.062, 24),
-      new THREE.MeshStandardMaterial({ color: '#6b472a', roughness: 0.18, metalness: 0.08 })
-    );
-    candleJar.position.y = deckY + 0.031;
-    candleJar.castShadow = true;
-
-    const wax = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.022, 0.022, 0.005, 20),
-      new THREE.MeshStandardMaterial({ color: '#f4efe6', roughness: 0.85 })
-    );
-    wax.position.y = deckY + 0.06;
-    this.candleGroup.add(candleJar, wax);
-
-    // --- Sculpted Ceramic Vase with Botanical Eucalyptus ---
-    const vaseMat = new THREE.MeshStandardMaterial({ color: '#dcd5cb', roughness: 0.52 });
-    const vaseProfile = [
-      new THREE.Vector2(0.0, 0.0),
-      new THREE.Vector2(0.026, 0.0),
-      new THREE.Vector2(0.034, 0.042),
-      new THREE.Vector2(0.028, 0.090),
-      new THREE.Vector2(0.016, 0.118),
-      new THREE.Vector2(0.019, 0.130),
-    ];
-    const vase = new THREE.Mesh(new THREE.LatheGeometry(vaseProfile, 24), vaseMat);
-    vase.position.y = deckY;
-    vase.castShadow = true;
-    this.vaseGroup.add(vase);
-
-    const stemMat = new THREE.MeshStandardMaterial({ color: '#4d6149', roughness: 0.72 });
-    const leafMat = new THREE.MeshStandardMaterial({ color: '#677d61', roughness: 0.65, side: THREE.DoubleSide });
-    const leafGeo = new THREE.CircleGeometry(0.015, 12);
-
-    const stemAngles = [
-      { rx: 0.14, rz: -0.18, h: 0.23 },
-      { rx: -0.12, rz: 0.14, h: 0.26 },
-      { rx: 0.08, rz: 0.22, h: 0.20 },
-    ];
-    stemAngles.forEach((st) => {
-      const branch = new THREE.Group();
-      branch.position.set(0, deckY + 0.085, 0);
-      branch.rotation.set(st.rx, 0, st.rz);
-
-      const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.0016, 0.002, st.h, 8), stemMat);
-      stalk.position.y = st.h / 2;
-      branch.add(stalk);
-
-      for (let i = 1; i <= 5; i++) {
-        const ly = 0.05 + (st.h - 0.06) * (i / 5);
-        [-1, 1].forEach((side) => {
-          const leaf = new THREE.Mesh(leafGeo, leafMat);
-          leaf.position.set(side * 0.015, ly, (i % 2 === 0 ? 1 : -1) * 0.007);
-          leaf.rotation.set(0.4, side * 0.5, side * 0.35);
-          leaf.castShadow = true;
-          branch.add(leaf);
-        });
+    obj.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        if (onMaterial && child.material) {
+          onMaterial(child);
+        }
       }
-      this.vaseGroup.add(branch);
     });
 
-    // --- Woven Seagrass Towel Basket ---
-    const basket = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.145, 0.115, 0.27, 28),
-      new THREE.MeshStandardMaterial({ color: '#bfa17c', roughness: 0.88 })
-    );
-    basket.position.y = 0.135;
-    basket.castShadow = true;
-    basket.receiveShadow = true;
+    wrapper.add(obj);
+    wrapper.position.y = baseOffsetY;
+    targetGroup.add(wrapper);
+    this._loadedProps.push(wrapper);
+    return wrapper;
+  }
 
-    const towel1 = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.050, 0.050, 0.22, 18),
-      new THREE.MeshStandardMaterial({ color: '#f3f0ea', roughness: 0.92 })
+  _loadPropAsset(url, targetGroup, targetHeight, baseOffsetY = 0, onMounted = null, onMaterial = null) {
+    this.gltfLoader.load(
+      url,
+      (gltf) => {
+        if (this.isDisposed) return;
+        const mounted = this._normalizeAndMount(gltf.scene, targetGroup, targetHeight, baseOffsetY, onMaterial);
+        if (onMounted) onMounted(mounted);
+      },
+      undefined,
+      (err) => {
+        console.warn(`Optional prop ${url} could not be loaded:`, err);
+      }
     );
-    towel1.position.set(-0.04, 0.26, -0.03);
-    towel1.rotation.z = 0.16;
-    towel1.castShadow = true;
+  }
 
-    const towel2 = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.048, 0.048, 0.20, 18),
-      new THREE.MeshStandardMaterial({ color: '#d8d3c8', roughness: 0.92 })
+  _loadPhotorealisticProps() {
+    const deckY = 0.8636;
+    const oakPBR = getWoodTextures('natural-oak');
+    const fabricPBR = getFabricPBR(3.5, 2.5);
+
+    // 1. Sculpted Soap Dispenser with Brushed Brass Pump (from architectural scene)
+    this._loadPropAsset('/models/props/arch/arch_soap.glb', this.soapGroup, 0.145, deckY, null, (child) => {
+      if (child.name === 'Soap_Pump') {
+        child.material = this.sconceMetalMat;
+      } else if (child.material) {
+        child.material.roughness = 0.42;
+        child.material.envMapIntensity = 0.85;
+      }
+    });
+
+    // 2. Amber Glass Reed Diffuser (from architectural scene)
+    this._loadPropAsset('/models/props/arch/arch_diffuser.glb', this.candleGroup, 0.21, deckY, null, (child) => {
+      if (child.name === 'Diffuser_Bottle' && child.material) {
+        child.material.roughness = 0.12;
+        child.material.metalness = 0.05;
+        child.material.envMapIntensity = 1.25;
+      } else if (child.name.startsWith('Diffuser_Reed') && child.material) {
+        child.material.map = oakPBR.map;
+        child.material.roughness = 0.65;
+        child.material.needsUpdate = true;
+      }
+    });
+
+    // 3. Real Poly Haven CC0 Potted Succulent Plant (1K PBR diffuse/normal/ARM)
+    this._loadPropAsset(
+      '/models/props/potted_plant_04/potted_plant_04.gltf',
+      this.vaseGroup,
+      0.21,
+      deckY
     );
-    towel2.position.set(0.05, 0.24, 0.03);
-    towel2.rotation.z = -0.18;
-    towel2.castShadow = true;
 
-    this.basketGroup.add(basket, towel1, towel2);
-
-    // --- Woven Bath Mat ---
-    const bathMat = new THREE.Mesh(
-      new THREE.BoxGeometry(0.76, 0.011, 0.46),
-      new THREE.MeshStandardMaterial({ color: '#e6e0d5', roughness: 0.94, metalness: 0 })
+    // 4. Sculpted Oak Bathroom Stool w/ Rolled Plush Towels + Poly Haven Wicker Basket
+    this._loadPropAsset(
+      '/models/props/arch/arch_stool.glb',
+      this.basketGroup,
+      0.41,
+      0,
+      null,
+      (child) => {
+        if (!child.material) return;
+        if (child.name.startsWith('Stool_')) {
+          child.material.map = oakPBR.map;
+          child.material.normalMap = oakPBR.normalMap;
+          child.material.roughnessMap = oakPBR.roughnessMap;
+          child.material.color.set('#cfb088');
+          child.material.roughness = 0.58;
+          child.material.needsUpdate = true;
+        } else if (child.name.startsWith('Rolled_Towel')) {
+          child.material.map = fabricPBR.map;
+          child.material.normalMap = fabricPBR.normalMap;
+          child.material.roughnessMap = fabricPBR.roughnessMap;
+          child.material.color.set('#f4f1ea');
+          child.material.roughness = 0.92;
+          child.material.needsUpdate = true;
+        }
+      }
     );
-    bathMat.position.set(0, 0.0055, 0.56);
-    bathMat.receiveShadow = true;
-    bathMat.castShadow = true;
-    this.bathMatGroup.add(bathMat);
+
+    this._loadPropAsset(
+      '/models/props/wicker_basket_01/wicker_basket_01.gltf',
+      this.basketGroup,
+      0.115,
+      0.41,
+      (mounted) => {
+        mounted.rotation.y = 0.12;
+      }
+    );
+
+    // 5. Textured Woven Bath Rug (architectural rug mesh + Poly Haven rough_linen PBR)
+    this._loadPropAsset(
+      '/models/props/arch/arch_rug.glb',
+      this.bathMatGroup,
+      0.012,
+      0.002,
+      (mounted) => {
+        mounted.position.set(0, 0.002, 0.58);
+        mounted.scale.set(0.68, 1, 0.72);
+      },
+      (child) => {
+        if (child.material) {
+          child.material.map = fabricPBR.map;
+          child.material.normalMap = fabricPBR.normalMap;
+          child.material.normalScale?.set(0.6, 0.6);
+          child.material.roughnessMap = fabricPBR.roughnessMap;
+          child.material.color.set('#e5dfd4');
+          child.material.roughness = 0.94;
+          child.material.needsUpdate = true;
+        }
+      }
+    );
   }
 
   updateLayout(widthId = '31', mirrorType = 'rectangle') {
@@ -253,148 +300,146 @@ export class BathroomRoomBuilder {
     this._lastMirror = mirrorType;
 
     const wallZ = -0.243;
-    const isDouble = widthId === '61';
 
-    // 1. Rebuild Wall Sconces with zero mirror overlap
+    // 1. Rebuild Architectural Wall Sconces cleanly with zero mirror overlap
     while (this.sconcesGroup.children.length > 0) {
       const child = this.sconcesGroup.children[0];
+      child.traverse((obj) => {
+        if (obj.geometry) obj.geometry.dispose();
+      });
       this.sconcesGroup.remove(child);
     }
     this.sconcePointLights = [];
 
-    // Define sconce X coordinates
-    // Single mirror: 2 sconces flanking the center mirror
-    // 61" Double mirror (mirrors at X = ±0.381 m, width 0.52m -> [-0.641, -0.121] and [0.121, 0.641]):
-    // 3 architectural sconces at [-0.74, 0.0, 0.74] m. None intersect mirrors!
     let sconceXPositions = [];
     if (widthId === '24') {
-      sconceXPositions = [-0.38, 0.38];
+      sconceXPositions = [-0.40, 0.40];
     } else if (widthId === '31') {
-      sconceXPositions = [-0.45, 0.45];
+      sconceXPositions = [-0.46, 0.46];
     } else if (widthId === '37') {
-      sconceXPositions = [-0.48, 0.48];
+      sconceXPositions = [-0.50, 0.50];
     } else if (widthId === '49') {
-      sconceXPositions = [-0.52, 0.52];
+      sconceXPositions = [-0.56, 0.56];
     } else if (widthId === '61') {
-      sconceXPositions = [-0.74, 0.0, 0.74];
+      sconceXPositions = [-0.76, 0.0, 0.76];
     }
 
     sconceXPositions.forEach((xPos) => {
       const sconce = new THREE.Group();
-      const plate = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.040, 0.040, 0.012, 24),
+
+      const backplate = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.044, 0.046, 0.014, 28),
         this.sconceMetalMat
       );
-      plate.rotation.x = Math.PI / 2;
-      plate.position.set(xPos, 1.52, wallZ + 0.006);
+      backplate.rotation.x = Math.PI / 2;
+      backplate.position.set(xPos, 1.52, wallZ + 0.007);
+      backplate.castShadow = true;
+
+      const collar = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.015, 0.020, 0.018, 20),
+        this.sconceMetalMat
+      );
+      collar.rotation.x = Math.PI / 2;
+      collar.position.set(xPos, 1.52, wallZ + 0.020);
 
       const arm = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.007, 0.007, 0.082, 14),
+        new THREE.CylinderGeometry(0.007, 0.007, 0.082, 16),
         this.sconceMetalMat
       );
       arm.rotation.x = Math.PI / 2;
-      arm.position.set(xPos, 1.52, wallZ + 0.046);
+      arm.position.set(xPos, 1.52, wallZ + 0.056);
 
       const socket = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.014, 0.012, 0.024, 16),
+        new THREE.CylinderGeometry(0.016, 0.013, 0.026, 20),
         this.sconceMetalMat
       );
-      socket.position.set(xPos, 1.545, wallZ + 0.084);
+      socket.position.set(xPos, 1.545, wallZ + 0.094);
 
-      const globe = new THREE.Mesh(new THREE.SphereGeometry(0.055, 24, 18), this.globeMat);
-      globe.position.set(xPos, 1.605, wallZ + 0.084);
+      const globe = new THREE.Mesh(new THREE.SphereGeometry(0.056, 28, 22), this.globeMat);
+      globe.position.set(xPos, 1.608, wallZ + 0.094);
       globe.castShadow = true;
 
-      // Realistic warm point light emitted from each sconce
-      const light = new THREE.PointLight('#ffe8c6', 0.85, 2.8, 1.8);
-      light.position.set(xPos, 1.605, wallZ + 0.12);
-      light.castShadow = false; // Soft ambient bounce
+      const light = new THREE.PointLight('#ffe8c6', 0.45, 2.4, 2.0);
+      light.position.set(xPos, 1.608, wallZ + 0.15);
+      light.castShadow = false;
       this.sconcePointLights.push(light);
 
-      sconce.add(plate, arm, socket, globe, light);
+      sconce.add(backplate, collar, arm, socket, globe, light);
       this.sconcesGroup.add(sconce);
     });
 
-    // 2. Position Countertop Props (Never floating, never overlapping faucets)
+    // 2. Adaptive Positioning per Vanity Width (no clipping with basins, legs, or faucets)
     if (widthId === '24') {
-      // 24" Vanity: countertop half-width is 0.3175 m.
-      // Sits comfortably on stone wings (X in [-0.3175, -0.240] and [+0.240, +0.3175])
-      this.soapGroup.position.set(-0.275, 0, -0.115);
-      this.candleGroup.position.set(-0.275, 0, 0.055);
-      this.vaseGroup.position.set(0.275, 0, -0.095);
-      this.basketGroup.position.set(0.52, 0, -0.02);
-      if (this.contactShadow) {
-        this.contactShadow.scale.set(0.85, 0.9, 1);
-      }
+      this.soapGroup.position.set(-0.26, 0, -0.105);
+      this.candleGroup.position.set(-0.25, 0, 0.065);
+      this.vaseGroup.position.set(0.255, 0, -0.075);
+      this.basketGroup.position.set(0.62, 0, -0.04);
+      this.bathMatGroup.scale.set(0.88, 1, 1);
+      if (this.contactShadow) this.contactShadow.scale.set(0.85, 0.9, 1);
     } else if (widthId === '31') {
-      this.soapGroup.position.set(-0.325, 0, -0.115);
-      this.candleGroup.position.set(-0.318, 0, 0.055);
-      this.vaseGroup.position.set(0.325, 0, -0.095);
-      this.basketGroup.position.set(0.62, 0, -0.02);
-      if (this.contactShadow) {
-        this.contactShadow.scale.set(1.0, 1.0, 1);
-      }
+      this.soapGroup.position.set(-0.315, 0, -0.105);
+      this.candleGroup.position.set(-0.305, 0, 0.065);
+      this.vaseGroup.position.set(0.31, 0, -0.075);
+      this.basketGroup.position.set(0.68, 0, -0.04);
+      this.bathMatGroup.scale.set(1.0, 1, 1);
+      if (this.contactShadow) this.contactShadow.scale.set(1.0, 1.0, 1);
     } else if (widthId === '37') {
-      this.soapGroup.position.set(-0.365, 0, -0.115);
-      this.candleGroup.position.set(-0.365, 0, 0.055);
-      this.vaseGroup.position.set(0.365, 0, -0.095);
-      this.basketGroup.position.set(0.70, 0, -0.02);
-      if (this.contactShadow) {
-        this.contactShadow.scale.set(1.15, 1.0, 1);
-      }
+      this.soapGroup.position.set(-0.36, 0, -0.105);
+      this.candleGroup.position.set(-0.35, 0, 0.065);
+      this.vaseGroup.position.set(0.36, 0, -0.075);
+      this.basketGroup.position.set(0.76, 0, -0.04);
+      this.bathMatGroup.scale.set(1.12, 1, 1);
+      if (this.contactShadow) this.contactShadow.scale.set(1.16, 1.0, 1);
     } else if (widthId === '49') {
-      this.soapGroup.position.set(-0.42, 0, -0.115);
-      this.candleGroup.position.set(-0.42, 0, 0.055);
-      this.vaseGroup.position.set(0.42, 0, -0.095);
-      this.basketGroup.position.set(0.84, 0, -0.02);
-      if (this.contactShadow) {
-        this.contactShadow.scale.set(1.45, 1.0, 1);
-      }
+      this.soapGroup.position.set(-0.42, 0, -0.105);
+      this.candleGroup.position.set(-0.41, 0, 0.065);
+      this.vaseGroup.position.set(0.42, 0, -0.075);
+      this.basketGroup.position.set(0.92, 0, -0.04);
+      this.bathMatGroup.scale.set(1.35, 1, 1);
+      if (this.contactShadow) this.contactShadow.scale.set(1.48, 1.0, 1);
     } else if (widthId === '61') {
-      // 61" Double Vanity:
-      // Basins at X = ±0.381 m. Center bridge between basins: X in [-0.141, +0.141] m!
-      // Vase sits gracefully in the center bridge:
-      this.vaseGroup.position.set(0.0, 0, -0.095);
-      // Soap dispenser on outer left deck:
-      this.soapGroup.position.set(-0.68, 0, -0.115);
-      // Candle on outer right deck:
-      this.candleGroup.position.set(0.68, 0, -0.115);
-      // Basket outside right edge (cabinet right edge is 0.762m):
-      this.basketGroup.position.set(1.00, 0, -0.02);
-      if (this.contactShadow) {
-        this.contactShadow.scale.set(1.85, 1.0, 1);
-      }
+      this.vaseGroup.position.set(0.0, 0, -0.075);
+      this.soapGroup.position.set(-0.67, 0, -0.105);
+      this.candleGroup.position.set(0.67, 0, -0.095);
+      this.basketGroup.position.set(1.10, 0, -0.04);
+      this.bathMatGroup.scale.set(1.58, 1, 1);
+      if (this.contactShadow) this.contactShadow.scale.set(1.88, 1.0, 1);
     }
   }
 
   update(config, hardwareSpec) {
-    // 1. Reactive layout based on width and mirror type
     this.updateLayout(config.width || '31', config.mirror || 'rectangle');
 
-    // 2. Wall material
     if (this._lastWall !== config.wall) {
-      this.wallMat.map = getWallTexture(config.wall);
-      this.wallMat.roughness = config.wall === 'marble' ? 0.28 : 0.86;
+      const wallPBR = getWallPBR(config.wall || 'microcement');
+      this.wallMat.map = wallPBR.map;
+      this.wallMat.normalMap = wallPBR.normalMap || null;
+      this.wallMat.normalScale?.set(wallPBR.normalScale || 0.35, wallPBR.normalScale || 0.35);
+      this.wallMat.roughnessMap = wallPBR.roughnessMap || null;
+      this.wallMat.color.set(wallPBR.tint || '#ffffff');
+      this.wallMat.roughness = wallPBR.roughness ?? 0.84;
       this.wallMat.needsUpdate = true;
       this._lastWall = config.wall;
     }
 
-    // 3. Floor material
     if (this._lastFloor !== config.floor) {
-      this.floorMat.map = getFloorTexture(config.floor);
-      this.floorMat.roughness = config.floor === 'marble-hex' ? 0.30 : 0.56;
+      const floorPBR = getFloorPBR(config.floor || 'checker');
+      this.floorMat.map = floorPBR.map;
+      this.floorMat.normalMap = floorPBR.normalMap || null;
+      this.floorMat.normalScale?.set(floorPBR.normalScale || 0.5, floorPBR.normalScale || 0.5);
+      this.floorMat.roughnessMap = floorPBR.roughnessMap || null;
+      this.floorMat.color.set(floorPBR.tint || '#ffffff');
+      this.floorMat.roughness = floorPBR.roughness ?? 0.48;
       this.floorMat.needsUpdate = true;
       this._lastFloor = config.floor;
     }
 
-    // 4. Sync sconce metal finish with vanity hardware
     if (hardwareSpec) {
       this.sconceMetalMat.color.set(hardwareSpec.hex);
       this.sconceMetalMat.metalness = hardwareSpec.metalness;
       this.sconceMetalMat.roughness = hardwareSpec.roughness;
     }
 
-    // 5. Toggle styling props & sconce lights
     const showProps = Boolean(config.showProps);
     this.propsGroup.visible = showProps;
     this.sconcePointLights.forEach((light) => {
@@ -406,6 +451,17 @@ export class BathroomRoomBuilder {
     this.sconcePointLights.forEach((light) => {
       light.intensity = intensity;
     });
-    this.globeMat.emissiveIntensity = Math.min(intensity * 1.1, 2.0);
+    this.globeMat.emissiveIntensity = Math.min(intensity * 0.9, 1.05);
+  }
+
+  dispose() {
+    this.isDisposed = true;
+    this.root.traverse((obj) => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose());
+        else obj.material.dispose();
+      }
+    });
   }
 }

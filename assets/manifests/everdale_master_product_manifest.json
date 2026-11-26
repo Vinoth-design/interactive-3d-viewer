@@ -1,0 +1,319 @@
+{
+  "manifestVersion": "2.0.0",
+  "updatedAt": "2026-11-23T23:30:00Z",
+  "productFamily": "bathroom-vanities",
+  "brand": "Everdale",
+  "collection": "Everdale Vanity Collection",
+  "supportedFinishes": [
+    "evergreen-fog",
+    "white-matte",
+    "natural-oak",
+    "walnut",
+    "charcoal"
+  ],
+  "supportedCountertops": [
+    "white-quartz",
+    "carrara-marble",
+    "black-granite",
+    "concrete",
+    "calacatta-gold"
+  ],
+  "supportedHardware": [
+    "antique-brass",
+    "matte-black",
+    "brushed-nickel",
+    "chrome"
+  ],
+  "textureReferences": {
+    "oak": {
+      "diffuse": "/textures/oak_diffuse.png",
+      "roughness": "/textures/oak_roughness.png",
+      "normal": "/textures/oak_normal.png"
+    },
+    "walnut": {
+      "diffuse": "/textures/walnut_diffuse.png",
+      "roughness": "/textures/walnut_roughness.png",
+      "normal": "/textures/walnut_normal.png"
+    },
+    "carrara": {
+      "diffuse": "/textures/carrara_marble_diffuse.png",
+      "roughness": "/textures/carrara_marble_roughness.png",
+      "normal": "/textures/carrara_marble_normal.png"
+    },
+    "quartz": {
+      "diffuse": "/textures/white_quartz_diffuse.png",
+      "roughness": "/textures/white_quartz_roughness.png",
+      "normal": "/textures/white_quartz_normal.png"
+    },
+    "granite": {
+      "diffuse": "/textures/black_granite_diffuse.png",
+      "roughness": "/textures/black_granite_roughness.png",
+      "normal": "/textures/black_granite_normal.png"
+    },
+    "brushed_metal": {
+      "normal": "/textures/brushed_metal_normal.png"
+    }
+  },
+  "variants": [
+    {
+      "variantId": "vanity-24",
+      "sku": "605-9524",
+      "name": "Everdale 24\" Single Bathroom Vanity",
+      "nominalDimensionsIn": {
+        "width": 24,
+        "depth": 19.0,
+        "height": 34.0,
+        "overallHeightWithBacksplash": 38.0
+      },
+      "manufacturingDimensionsMm": {
+        "countertopWidth": 635.0,
+        "countertopDepth": 482.6,
+        "baseCarcassHeight": 733.83,
+        "legsHeight": 104.78,
+        "countertopThickness": 25.0,
+        "backsplashHeight": 101.6,
+        "totalHeight": 965.2
+      },
+      "model": {
+        "format": "glb",
+        "path": "/models/Everdale_24_Vanity_Interactive.glb",
+        "fileSizeBytes": 123816,
+        "fileSizeKb": 120.91,
+        "exportVersion": "2.0.0"
+      },
+      "nodeCount": 44,
+      "meshCount": 40,
+      "materials": [
+        "MAT_Antique_Brass",
+        "MAT_Drawer_Interior",
+        "MAT_Engineered_Stone_White",
+        "MAT_Evergreen_Fog",
+        "MAT_Slide_Steel",
+        "MAT_Solid_Wood_Legs"
+      ],
+      "animationClips": [
+        "Drawer01_Close",
+        "Drawer01_Open",
+        "Drawer02_Close",
+        "Drawer02_Open"
+      ],
+      "validation": {
+        "measuredBboxMm": [
+          635.0,
+          782.4,
+          1092.7
+        ],
+        "widthVarianceMm": 0.0,
+        "status": "PASSED"
+      }
+    },
+    {
+      "variantId": "vanity-31",
+      "sku": "605-9531",
+      "name": "Everdale 31\" Single Bathroom Vanity",
+      "nominalDimensionsIn": {
+        "width": 31,
+        "depth": 19.0,
+        "height": 34.0,
+        "overallHeightWithBacksplash": 38.0
+      },
+      "manufacturingDimensionsMm": {
+        "countertopWidth": 787.4,
+        "countertopDepth": 482.6,
+        "baseCarcassHeight": 733.83,
+        "legsHeight": 104.78,
+        "countertopThickness": 25.0,
+        "backsplashHeight": 101.6,
+        "totalHeight": 965.2
+      },
+      "model": {
+        "format": "glb",
+        "path": "/models/Everdale_31_Vanity_Interactive.glb",
+        "fileSizeBytes": 122092,
+        "fileSizeKb": 119.23,
+        "exportVersion": "2.0.0"
+      },
+      "nodeCount": 45,
+      "meshCount": 40,
+      "materials": [
+        "MAT_Antique_Brass",
+        "MAT_Drawer_Interior",
+        "MAT_Engineered_Stone_White",
+        "MAT_Evergreen_Fog",
+        "MAT_Slide_Steel",
+        "MAT_Solid_Wood_Legs"
+      ],
+      "animationClips": [
+        "Drawer01_Close",
+        "Drawer01_Open",
+        "Drawer02_Close",
+        "Drawer02_Open"
+      ],
+      "validation": {
+        "measuredBboxMm": [
+          787.4,
+          782.4,
+          1092.7
+        ],
+        "widthVarianceMm": 0.0,
+        "status": "PASSED"
+      }
+    },
+    {
+      "variantId": "vanity-37",
+      "sku": "605-9537",
+      "name": "Everdale 37\" Single Bathroom Vanity",
+      "nominalDimensionsIn": {
+        "width": 37,
+        "depth": 19.0,
+        "height": 34.0,
+        "overallHeightWithBacksplash": 38.0
+      },
+      "manufacturingDimensionsMm": {
+        "countertopWidth": 939.8,
+        "countertopDepth": 482.6,
+        "baseCarcassHeight": 733.83,
+        "legsHeight": 104.78,
+        "countertopThickness": 25.0,
+        "backsplashHeight": 101.6,
+        "totalHeight": 965.2
+      },
+      "model": {
+        "format": "glb",
+        "path": "/models/Everdale_37_Vanity_Interactive.glb",
+        "fileSizeBytes": 124240,
+        "fileSizeKb": 121.33,
+        "exportVersion": "2.0.0"
+      },
+      "nodeCount": 44,
+      "meshCount": 40,
+      "materials": [
+        "MAT_Antique_Brass",
+        "MAT_Drawer_Interior",
+        "MAT_Engineered_Stone_White",
+        "MAT_Evergreen_Fog",
+        "MAT_Slide_Steel",
+        "MAT_Solid_Wood_Legs"
+      ],
+      "animationClips": [
+        "Drawer01_Close",
+        "Drawer01_Open",
+        "Drawer02_Close",
+        "Drawer02_Open"
+      ],
+      "validation": {
+        "measuredBboxMm": [
+          939.8,
+          782.4,
+          1092.7
+        ],
+        "widthVarianceMm": 0.0,
+        "status": "PASSED"
+      }
+    },
+    {
+      "variantId": "vanity-49",
+      "sku": "605-9549",
+      "name": "Everdale 49\" Single Bathroom Vanity",
+      "nominalDimensionsIn": {
+        "width": 49,
+        "depth": 19.0,
+        "height": 34.0,
+        "overallHeightWithBacksplash": 38.0
+      },
+      "manufacturingDimensionsMm": {
+        "countertopWidth": 1244.6,
+        "countertopDepth": 482.6,
+        "baseCarcassHeight": 733.83,
+        "legsHeight": 104.78,
+        "countertopThickness": 25.0,
+        "backsplashHeight": 101.6,
+        "totalHeight": 965.2
+      },
+      "model": {
+        "format": "glb",
+        "path": "/models/Everdale_49_Vanity_Interactive.glb",
+        "fileSizeBytes": 124188,
+        "fileSizeKb": 121.28,
+        "exportVersion": "2.0.0"
+      },
+      "nodeCount": 44,
+      "meshCount": 40,
+      "materials": [
+        "MAT_Antique_Brass",
+        "MAT_Drawer_Interior",
+        "MAT_Engineered_Stone_White",
+        "MAT_Evergreen_Fog",
+        "MAT_Slide_Steel",
+        "MAT_Solid_Wood_Legs"
+      ],
+      "animationClips": [
+        "Drawer01_Close",
+        "Drawer01_Open",
+        "Drawer02_Close",
+        "Drawer02_Open"
+      ],
+      "validation": {
+        "measuredBboxMm": [
+          1244.6,
+          782.4,
+          1092.7
+        ],
+        "widthVarianceMm": 0.0,
+        "status": "PASSED"
+      }
+    },
+    {
+      "variantId": "vanity-61",
+      "sku": "605-9561",
+      "name": "Everdale 61\" Double Bathroom Vanity",
+      "nominalDimensionsIn": {
+        "width": 61,
+        "depth": 19.0,
+        "height": 34.0,
+        "overallHeightWithBacksplash": 38.0
+      },
+      "manufacturingDimensionsMm": {
+        "countertopWidth": 1549.4,
+        "countertopDepth": 482.6,
+        "baseCarcassHeight": 733.83,
+        "legsHeight": 104.78,
+        "countertopThickness": 25.0,
+        "backsplashHeight": 101.6,
+        "totalHeight": 965.2
+      },
+      "model": {
+        "format": "glb",
+        "path": "/models/Everdale_61_Vanity_Interactive.glb",
+        "fileSizeBytes": 163560,
+        "fileSizeKb": 159.73,
+        "exportVersion": "2.0.0"
+      },
+      "nodeCount": 45,
+      "meshCount": 40,
+      "materials": [
+        "MAT_Antique_Brass",
+        "MAT_Drawer_Interior",
+        "MAT_Engineered_Stone_White",
+        "MAT_Evergreen_Fog",
+        "MAT_Slide_Steel",
+        "MAT_Solid_Wood_Legs"
+      ],
+      "animationClips": [
+        "Drawer01_Close",
+        "Drawer01_Open",
+        "Drawer02_Close",
+        "Drawer02_Open"
+      ],
+      "validation": {
+        "measuredBboxMm": [
+          1549.4,
+          782.4,
+          1092.7
+        ],
+        "widthVarianceMm": 0.0,
+        "status": "PASSED"
+      }
+    }
+  ]
+}
