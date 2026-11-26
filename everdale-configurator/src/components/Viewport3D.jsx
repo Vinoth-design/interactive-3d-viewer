@@ -12,13 +12,11 @@ import {
   Share2,
   SlidersHorizontal,
   Sparkles,
-  X,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
 import { VanitySceneManager } from '../three/VanitySceneManager';
 import { WIDTH_OPTIONS } from '../catalog/index';
-import PartOptionsEditor, { getHotspotMeta } from './PartOptionsEditor';
 
 const CAMERA_VIEWS = [
   { id: 'threeQuarter', label: '3/4 View' },
@@ -176,8 +174,6 @@ const Viewport3D = React.forwardRef(function Viewport3D(
     onSelectHotspot(activeHotspot === hotspotId ? null : hotspotId);
   };
 
-  const activeMeta = getHotspotMeta(activeHotspot, isSeries);
-
   return (
     <div
       ref={localContainerRef}
@@ -254,48 +250,6 @@ const Viewport3D = React.forwardRef(function Viewport3D(
           );
         })}
       </div>
-
-      {/* Contextual In-Canvas Popup for Selected 3D Part */}
-      <AnimatePresence>
-        {activeHotspot && activeMeta && isActive && (
-          <motion.div
-            key={activeHotspot}
-            className="hotspot-popover"
-            role="dialog"
-            aria-label={activeMeta.title}
-            initial={{ opacity: 0, y: 10, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.97 }}
-            transition={{ duration: 0.16 }}
-          >
-            <div className="hotspot-popover-head">
-              <div>
-                <div className="hotspot-popover-title">{activeMeta.title}</div>
-                <div className="hotspot-popover-sub">{activeMeta.badge}</div>
-              </div>
-              <button
-                type="button"
-                className="modal-close-btn"
-                style={{ width: 28, height: 28 }}
-                onClick={() => onSelectHotspot?.(null)}
-                aria-label="Close popup"
-              >
-                <X size={14} />
-              </button>
-            </div>
-
-            <div className="hotspot-popover-body">
-              <PartOptionsEditor
-                activeHotspot={activeHotspot}
-                config={config}
-                isDouble={isDouble}
-                isSeries={isSeries}
-                onUpdateConfig={onUpdateConfig}
-              />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Top-Left Camera Angle Presets */}
       <div className="camera-presets-bar" role="toolbar" aria-label="3D camera views">

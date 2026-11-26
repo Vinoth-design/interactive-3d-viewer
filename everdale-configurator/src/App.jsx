@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { CheckCircle2, FileText, ShoppingBag } from 'lucide-react';
+import { CheckCircle2, FileText, ShoppingBag, X } from 'lucide-react';
+import PartOptionsEditor, { getHotspotMeta } from './components/PartOptionsEditor';
 import {
   BRAND_CONFIG,
   CABINET_FINISHES,
@@ -242,6 +243,8 @@ export default function App() {
 
   const isInStock = config.tab === 'in-stock' && !eligibility?.isCustomized;
   const mobilePrice = isInStock ? pricing.afterRebate : pricing.subtotal;
+  const isSeriesMode = (product?.sellingCategory || config.purchaseMode) === 'series';
+  const activeHotspotMeta = getHotspotMeta(activeHotspot, isSeriesMode);
 
   return (
     <div className="app-root">
@@ -307,7 +310,7 @@ export default function App() {
       <div className="mobile-sticky-bar">
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-secondary)', fontWeight: 600 }}>
-            {config.purchaseMode === 'series' ? `${activeVariant.baseWidthIn}″ Series` : activeVariant.label} ·{' '}
+            {isSeriesMode ? `${activeVariant.baseWidthIn}″ Series` : activeVariant.label} ·{' '}
             {eligibility?.isCustomized ? 'Custom Quote Est.' : isInStock ? 'Est. After Savings*' : activeChannel.label}
           </div>
           <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--brand)' }}>
@@ -328,6 +331,60 @@ export default function App() {
           <span>{eligibility?.ctaLabel || activeChannel.ctaLabel}</span>
         </button>
       </div>
+
+      {/* Mobile Bottom Slide-In Option Drawer (<= 1023px) */}
+      <AnimatePresence>
+        {activeHotspot && activeHotspotMeta && (
+          <>
+            <motion.div
+              key="mobile-sheet-backdrop"
+              className="mobile-sheet-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              onClick={() => setActiveHotspot(null)}
+            />
+            <motion.div
+              key={activeHotspot}
+              className="hotspot-popover"
+              role="dialog"
+              aria-modal="true"
+              aria-label={activeHotspotMeta.title}
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 330 }}
+            >
+              <div className="mobile-sheet-handle" aria-hidden="true" />
+              <div className="hotspot-popover-head">
+                <div>
+                  <div className="hotspot-popover-title">{activeHotspotMeta.title}</div>
+                  <div className="hotspot-popover-sub">{activeHotspotMeta.badge}</div>
+                </div>
+                <button
+                  type="button"
+                  className="modal-close-btn"
+                  style={{ width: 28, height: 28 }}
+                  onClick={() => setActiveHotspot(null)}
+                  aria-label="Close options sheet"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              <div className="hotspot-popover-body">
+                <PartOptionsEditor
+                  activeHotspot={activeHotspot}
+                  config={config}
+                  isDouble={activeVariant?.basinCount === 2}
+                  isSeries={isSeriesMode}
+                  onUpdateConfig={updateConfig}
+                />
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Modals & Drawers */}
       <AnimatePresence>
