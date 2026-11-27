@@ -7,16 +7,19 @@ import {
   EyeOff,
   Maximize2,
   Minimize2,
+  Move,
   RotateCcw,
+  RotateCw,
   Ruler,
   Share2,
   SlidersHorizontal,
   Sparkles,
+  X,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
 import { VanitySceneManager } from '../three/VanitySceneManager';
-import { WIDTH_OPTIONS } from '../catalog/index';
+import { CABINET_FINISHES, WIDTH_OPTIONS } from '../catalog/index';
 
 const CAMERA_VIEWS = [
   { id: 'threeQuarter', label: '3/4 View' },
@@ -56,6 +59,7 @@ const Viewport3D = React.forwardRef(function Viewport3D(
   const hostRef = useRef(null);
   const managerRef = useRef(null);
   const hotspotRefs = useRef({});
+  const arOverlayRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [switchingVariant, setSwitchingVariant] = useState(false);
@@ -64,6 +68,13 @@ const Viewport3D = React.forwardRef(function Viewport3D(
   const [activePreset, setActivePreset] = useState('threeQuarter');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showHotspots, setShowHotspots] = useState(true);
+  const [arState, setArState] = useState({
+    active: false,
+    placed: false,
+    floorDetected: false,
+    includeMirror: false,
+    drawersOpen: false,
+  });
 
   const isSeries = config?.purchaseMode === 'series';
   const variant = activeVariant || WIDTH_OPTIONS.find((w) => w.id === config?.width) || WIDTH_OPTIONS[1];
@@ -141,6 +152,30 @@ const Viewport3D = React.forwardRef(function Viewport3D(
     resetCamera: () => {
       setActivePreset('threeQuarter');
       managerRef.current?.resetCamera();
+    },
+    startAR: async (options = {}) => {
+      if (!managerRef.current) {
+        throw new Error('3D scene is not ready yet.');
+      }
+      const includeMirror = Boolean(options.includeMirror);
+      setArState((prev) => ({ ...prev, includeMirror }));
+      await managerRef.current.startARSession(arOverlayRef.current, {
+        includeMirror,
+        onSessionStateChange: (next) => {
+          setArState((prev) => ({
+            ...prev,
+            active: Boolean(next.active),
+            placed: Boolean(next.placed),
+            floorDetected: Boolean(next.floorDetected),
+          }));
+        },
+      });
+    },
+    exportAR: async (format = 'glb', options = {}) => {
+      if (!managerRef.current) {
+        throw new Error('3D scene is not ready yet.');
+      }
+      return managerRef.current.exportARModel(format, options);
     },
   }));
 
@@ -356,8 +391,8 @@ const Viewport3D = React.forwardRef(function Viewport3D(
           <button
             type="button"
             className="tool-icon-btn"
-            title="View True-Scale AR Info"
-            aria-label="View true-scale AR preview"
+            title="Place in Your Bathroom (AR)"
+            aria-label="Place cabinet in your bathroom with AR"
             onClick={onOpenAR}
           >
             <Box size={17} />
@@ -379,6 +414,116 @@ const Viewport3D = React.forwardRef(function Viewport3D(
         <div className="viewport-hint-pill">
           Drag to rotate · Right-drag to pan · Scroll to zoom · Click drawers in 3D
         </div>
+      </div>
+
+      {/* Live WebXR AR DOM Overlay HUD (Phase B) */}
+      <div
+        ref={arOverlayRef}
+        className={`ar-dom-overlay ${arState.active ? 'active' : ''}`}
+        aria-hidden={!arState.active}
+      >
+        {arState.active && (
+          <>
+            <div className="ar-hud-top">
+              <div className="ar-hud-status ar-hud-interactive">
+                <span className={`ar-status-dot ${arState.placed ? 'placed' : arState.floorDetected ? 'ready' : ''}`} />
+                <span>
+                  {arState.placed
+                    ? `${variant.topWidthIn}″ Vanity Placed · True 1:1 Scale`
+                    : arState.floorDetected
+                      ? 'Floor detected — tap screen to place cabinet'
+                      : 'Point camera at bathroom floor slowly…'}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                className="ar-hud-exit ar-hud-interactive"
+                onClick={() => managerRef.current?.stopARSession()}
+                aria-label="Exit AR view"
+              >
+                <X size={16} />
+                <span>Exit AR</span>
+              </button>
+            </div>
+
+            <div className="ar-hud-bottom ar-hud-interactive">
+              {arState.placed && (
+                <div className="ar-hud-swatches" aria-label="Change cabinet finish live in AR">
+                  {CABINET_FINISHES.map((fin) => {
+                    const selected = config?.finish === fin.id;
+                    return (
+                      <button
+                        key={fin.id}
+                        type="button"
+                        className={`ar-swatch-chip ${selected ? 'active' : ''}`}
+                        onClick={() => onUpdateConfig?.({ finish: fin.id })}
+                      >
+                        <span
+                          className="ar-swatch-dot"
+                          style={{ background: fin.hex || '#8f968a' }}
+                        />
+                        <span>{fin.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="ar-hud-actions">
+                <button
+                  type="button"
+                  className="ar-hud-btn"
+                  onClick={() => managerRef.current?.repositionAR()}
+                >
+                  <Move size={14} />
+                  <span>{arState.placed ? 'Re-place' : 'Scanning…'}</span>
+                </button>
+                <button
+                  type="button"
+                  className="ar-hud-btn"
+                  disabled={!arState.placed}
+                  onClick={() => managerRef.current?.rotateAR(-Math.PI / 12)}
+                >
+                  <RotateCcw size={14} />
+                  <span>-15°</span>
+                </button>
+                <button
+                  type="button"
+                  className="ar-hud-btn"
+                  disabled={!arState.placed}
+                  onClick={() => managerRef.current?.rotateAR(Math.PI / 12)}
+                >
+                  <RotateCw size={14} />
+                  <span>+15°</span>
+                </button>
+                <button
+                  type="button"
+                  className="ar-hud-btn"
+                  disabled={!arState.placed}
+                  onClick={() => {
+                    const nextOpen = !arState.drawersOpen;
+                    setArState((prev) => ({ ...prev, drawersOpen: nextOpen }));
+                    managerRef.current?.setAllDrawers(nextOpen);
+                  }}
+                >
+                  <span>{arState.drawersOpen ? 'Close Drawers' : 'Open Drawers'}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`ar-hud-btn ${arState.includeMirror ? 'active' : ''}`}
+                  onClick={() => {
+                    const nextMirror = !arState.includeMirror;
+                    setArState((prev) => ({ ...prev, includeMirror: nextMirror }));
+                    managerRef.current?.setARIncludeMirror(nextMirror);
+                  }}
+                >
+                  <span>{arState.includeMirror ? 'Mirror On' : 'Mirror Off'}</span>
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

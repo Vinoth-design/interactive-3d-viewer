@@ -1,21 +1,24 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Box, ChevronLeft, ChevronRight, Image as ImageIcon, Maximize2, Sparkles } from 'lucide-react';
 import { CatalogService } from '../catalog/index';
 import Viewport3D from './Viewport3D';
 import GalleryLightbox from './GalleryLightbox';
 
-export default function ShowroomStage({
-  config,
-  activeVariant,
-  activeHotspot,
-  onSelectHotspot,
-  onUpdateConfig,
-  onToggleDimensions,
-  onOpenSceneSettings,
-  onOpenShare,
-  onOpenAR,
-  onShowToast,
-}) {
+const ShowroomStage = React.forwardRef(function ShowroomStage(
+  {
+    config,
+    activeVariant,
+    activeHotspot,
+    onSelectHotspot,
+    onUpdateConfig,
+    onToggleDimensions,
+    onOpenSceneSettings,
+    onOpenShare,
+    onOpenAR,
+    onShowToast,
+  },
+  ref
+) {
   const stageContainerRef = useRef(null);
   const viewportRef = useRef(null);
   const touchStartX = useRef(null);
@@ -27,6 +30,17 @@ export default function ShowroomStage({
   const [mode, setMode] = useState('3d'); // '3d' | 'gallery'
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+
+  useImperativeHandle(ref, () => ({
+    startAR: async (options) => {
+      setMode('3d');
+      return viewportRef.current?.startAR(options);
+    },
+    exportAR: async (format, options) => {
+      setMode('3d');
+      return viewportRef.current?.exportAR(format, options);
+    },
+  }));
 
   const activeImage = galleryImages[selectedIdx] || galleryImages[0];
 
@@ -192,4 +206,6 @@ export default function ShowroomStage({
       )}
     </section>
   );
-}
+});
+
+export default ShowroomStage;

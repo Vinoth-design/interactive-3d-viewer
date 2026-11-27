@@ -1,13 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import QRCode from 'qrcode';
 import {
   AlertCircle,
   Box,
+  Camera,
   Check,
   Copy,
   Download,
   FileText,
   HelpCircle,
+  Loader2,
   QrCode,
   Share2,
   ShoppingBag,
@@ -26,6 +29,7 @@ import {
   SCENE_WALL_PRESETS,
   VANITY_VARIANTS,
 } from '../catalog/index';
+import { getARCapabilities, revokeARObjectUrl } from '../three/arExporter';
 
 function ModalWrapper({ onClose, ariaLabel = 'Dialog', children }) {
   useEffect(() => {
@@ -204,60 +208,280 @@ export function ShareModal({ activeVariant, shareUrl, onClose, onShowToast }) {
   );
 }
 
-export function ARModal({ activeVariant, shareUrl, onClose }) {
+export function ARModal({
+  activeVariant,
+  config,
+  shareUrl,
+  onLaunchWebXR,
+  onExportAR,
+  onShowToast,
+  onClose,
+}) {
   const variant = activeVariant || VANITY_VARIANTS[1];
   const modelAsset = ASSET_REGISTRY.models.find((m) => m.variantId === variant.id);
-  const modelSizeKb = modelAsset ? `${Math.round(modelAsset.sizeBytes / 1024)} KB` : 'GLB';
+  const baseModelSizeKb = modelAsset ? `${Math.round(modelAsset.sizeBytes / 1024)} KB` : 'GLB';
 
-  const cells = [];
-  for (let r = 0; r < 11; r++) {
-    for (let c = 0; c < 11; c++) {
-      const isCorner = (r < 3 && c < 3) || (r < 3 && c > 7) || (r > 7 && c < 3);
-      const hash = ((r * 17 + c * 31 + shareUrl.length) * 13) % 7;
-      if (isCorner || hash < 3) {
-        cells.push(
-          <rect key={`${r}-${c}`} x={c * 14 + 12} y={r * 14 + 12} width="11" height="11" rx="2" fill="#171d1a" />
-        );
-      }
+  const [caps, setCaps] = useState(null);
+  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [includeMirror, setIncludeMirror] = useState(false);
+  const [busyMode, setBusyMode] = useState(null); // 'webxr' | 'usdz' | 'glb' | null
+  const [arError, setArError] = useState(null);
+  const [exportedUsdz, setExportedUsdz] = useState(null);
+  const [exportedGlb, setExportedGlb] = useState(null);
+  const blobUrlsRef = useRef([]);
+  const usdzAnchorRef = useRef(null);
+
+  const arLaunchUrl = useMemo(() => {
+    try {
+      const parsed = new URL(shareUrl);
+      parsed.searchParams.set('openAR', '1');
+      return parsed.toString();
+    } catch {
+      return shareUrl ? `${shareUrl}${shareUrl.includes('?') ? '&' : '?'}openAR=1` : '?openAR=1';
     }
-  }
+  }, [shareUrl]);
+
+  useEffect(() => {
+    let active = true;
+    getARCapabilities().then((res) => {
+      if (active) setCaps(res);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    QRCode.toDataURL(arLaunchUrl, {
+      width: 220,
+      margin: 1,
+      color: { dark: '#171d1a', light: '#ffffff' },
+    })
+      .then((url) => {
+        if (active) setQrDataUrl(url);
+      })
+      .catch(() => {
+        if (active) setQrDataUrl('');
+      });
+    return () => {
+      active = false;
+    };
+  }, [arLaunchUrl]);
+
+  useEffect(() => {
+    return () => {
+      blobUrlsRef.current.forEach((u) => revokeARObjectUrl(u));
+      blobUrlsRef.current = [];
+    };
+  }, []);
+
+  // Reset cached blobs when mirror toggle changes so next export reflects updated assembly
+  useEffect(() => {
+    setExportedUsdz(null);
+    setExportedGlb(null);
+  }, [includeMirror, config?.finish, config?.hardware, config?.countertop, config?.faucet, config?.faucetFinish, config?.backsplash, config?.width]);
+
+  const handleStartWebXR = async () => {
+    setArError(null);
+    setBusyMode('webxr');
+    try {
+      await onLaunchWebXR?.({ includeMirror });
+    } catch (err) {
+      setArError(err?.message || 'Unable to start WebXR AR session on this device.');
+    } finally {
+      setBusyMode(null);
+    }
+  };
+
+  const handleExportFormat = async (format, autoTriggerQuickLook = false) => {
+    setArError(null);
+    setBusyMode(format);
+    try {
+      const result = await onExportAR?.(format, { includeMirror });
+      if (!result?.url) throw new Error(`Could not generate ${format.toUpperCase()} package.`);
+      blobUrlsRef.current.push(result.url);
+
+      if (format === 'usdz') {
+        setExportedUsdz(result);
+        onShowToast?.(`USDZ AR asset ready (${Math.round(result.sizeBytes / 1024)} KB)`);
+        if (autoTriggerQuickLook) {
+          requestAnimationFrame(() => {
+            usdzAnchorRef.current?.click();
+          });
+        }
+      } else {
+        setExportedGlb(result);
+        const link = document.createElement('a');
+        link.href = result.url;
+        link.download = `Everdale-${variant.sku}-${config?.finish || 'custom'}.glb`;
+        link.click();
+        onShowToast?.(`Downloaded configured GLB (${Math.round(result.sizeBytes / 1024)} KB)`);
+      }
+    } catch (err) {
+      setArError(err?.message || `Failed to generate ${format.toUpperCase()} AR asset.`);
+    } finally {
+      setBusyMode(null);
+    }
+  };
+
+  const hasValidMirrorOption = config?.mirror && config.mirror !== 'none';
 
   return (
-    <ModalWrapper onClose={onClose}>
+    <ModalWrapper onClose={onClose} ariaLabel="True-Scale AR Room Placement">
       <div className="modal-header">
         <span className="modal-title">
           <Box size={17} />
-          True-Scale Room Preview ({variant.label})
+          View in Your Room · True-Scale AR ({variant.label})
         </span>
         <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Close">
           <X size={16} />
         </button>
       </div>
 
-      <div className="modal-body" style={{ alignItems: 'center', textAlign: 'center' }}>
-        <div className="ar-qr-card">
-          <svg width="168" height="168" viewBox="0 0 176 176" aria-label="Mobile handoff pattern">
-            <rect width="176" height="176" fill="#ffffff" />
-            {cells}
-          </svg>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <strong style={{ fontSize: 15 }}>Open on your mobile device</strong>
-          <span style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-            Reference scale for {variant.name}:{' '}
-            <strong>
-              {variant.topWidthIn}″W × {variant.depthIn}″D × {variant.heightIn}″H
-            </strong>{' '}
-            ({variant.topWidthMm} × {variant.depthMm} × {variant.heightMm} mm).
-          </span>
-        </div>
-
-        <div className="stock-banner" style={{ width: '100%', justifyContent: 'center' }}>
-          <Smartphone size={16} />
+      <div className="modal-body ar-modal-body">
+        <div className="ar-scale-banner">
+          <strong>True 1:1 Meter Dimensions</strong>
           <span>
-            GLB Model: {variant.modelFile.split('/').pop()} ({modelSizeKb})
+            {variant.topWidthIn}″W × {variant.depthIn}″D × {variant.heightIn}″H (
+            {variant.topWidthMm} × {variant.depthMm} × {variant.heightMm} mm) · SKU {variant.sku}
           </span>
+        </div>
+
+        {hasValidMirrorOption && (
+          <div className="toggle-row" style={{ padding: '8px 12px' }}>
+            <div className="toggle-text">
+              <span className="toggle-title" style={{ fontSize: 12.5 }}>
+                Include Wall Mirror in AR
+              </span>
+              <span className="toggle-desc" style={{ fontSize: 11 }}>
+                Default places freestanding vanity + top + faucet cleanly on floor
+              </span>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={includeMirror}
+              aria-label="Include wall mirror in AR export"
+              className={`switch-btn ${includeMirror ? 'on' : ''}`}
+              onClick={() => setIncludeMirror((v) => !v)}
+            >
+              <span className="switch-knob" />
+            </button>
+          </div>
+        )}
+
+        {/* Phase B: In-Browser WebXR Placement + Phase A: Dynamic USDZ / GLB Launch */}
+        <div className="ar-action-stack">
+          <button
+            type="button"
+            className="btn-primary-cta"
+            disabled={!caps?.webxrSupported || busyMode !== null}
+            onClick={handleStartWebXR}
+            title={
+              caps?.webxrSupported
+                ? 'Place vanity directly on your floor using WebXR AR'
+                : 'Live WebXR placement requires Android Chrome over HTTPS'
+            }
+          >
+            {busyMode === 'webxr' ? <Loader2 size={16} className="spin-icon" /> : <Camera size={16} />}
+            <span>
+              {caps?.webxrSupported
+                ? 'Launch Live Camera Placement (WebXR AR)'
+                : 'Live WebXR Camera AR (Android Chrome HTTPS)'}
+            </span>
+          </button>
+
+          <div className="ar-export-row">
+            <button
+              type="button"
+              className="btn-secondary-text ar-export-btn"
+              disabled={busyMode !== null}
+              onClick={() => handleExportFormat('usdz', Boolean(caps?.isIOS))}
+            >
+              {busyMode === 'usdz' ? <Loader2 size={15} className="spin-icon" /> : <Smartphone size={15} />}
+              <span>
+                {busyMode === 'usdz'
+                  ? 'Building USDZ…'
+                  : caps?.isIOS
+                    ? 'Open Apple AR Quick Look'
+                    : 'Export Apple AR (.usdz)'}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-secondary-text ar-export-btn"
+              disabled={busyMode !== null}
+              onClick={() => handleExportFormat('glb', false)}
+            >
+              {busyMode === 'glb' ? <Loader2 size={15} className="spin-icon" /> : <Download size={15} />}
+              <span>{busyMode === 'glb' ? 'Building GLB…' : 'Export Live Config (.glb)'}</span>
+            </button>
+          </div>
+
+          {/* Native Apple Quick Look anchor (<a rel="ar"><img></a> requirement) */}
+          {exportedUsdz && (
+            <a
+              ref={usdzAnchorRef}
+              rel="ar"
+              href={`${exportedUsdz.url}#allowsContentScaling=0`}
+              download={`Everdale-${variant.sku}-${config?.finish || 'custom'}.usdz`}
+              className="ar-quicklook-ready-link"
+            >
+              <img
+                src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+                alt=""
+                width="1"
+                height="1"
+                style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
+              />
+              <Box size={15} />
+              <span>
+                USDZ Ready ({Math.round(exportedUsdz.sizeBytes / 1024)} KB) — Tap to Open / Download
+              </span>
+            </a>
+          )}
+
+          {exportedGlb && (
+            <div className="ar-export-status">
+              <Check size={14} />
+              <span>
+                Configured GLB downloaded ({Math.round(exportedGlb.sizeBytes / 1024)} KB vs base {baseModelSizeKb})
+              </span>
+            </div>
+          )}
+
+          {arError && (
+            <div className="ar-error-banner" role="alert">
+              <AlertCircle size={15} />
+              <span>{arError}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Real Scannable QR Code for Desktop -> Mobile Camera Handoff */}
+        <div className="ar-qr-section">
+          <div className="ar-qr-card">
+            {qrDataUrl ? (
+              <img
+                src={qrDataUrl}
+                alt="Scan QR code to open this configured vanity in mobile AR"
+                className="ar-qr-img"
+                width="164"
+                height="164"
+              />
+            ) : (
+              <div className="ar-qr-loading">Generating QR…</div>
+            )}
+          </div>
+          <div className="ar-qr-caption">
+            <strong>Scan with your phone camera</strong>
+            <span>
+              Opens SKU {variant.sku} with your exact selected finishes and opens the AR room placer on mobile.
+              {!caps?.isSecureContext && ' (Note: mobile WebXR requires HTTPS.)'}
+            </span>
+          </div>
         </div>
       </div>
     </ModalWrapper>

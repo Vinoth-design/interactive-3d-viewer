@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { CheckCircle2, FileText, ShoppingBag, X } from 'lucide-react';
 import PartOptionsEditor, { getHotspotMeta } from './components/PartOptionsEditor';
@@ -53,7 +53,13 @@ export default function App() {
     }
   });
 
-  const [activeModal, setActiveModal] = useState(null); // 'scene' | 'share' | 'ar' | 'help' | 'scan' | 'cart' | 'quote'
+  const showroomRef = useRef(null);
+  const [activeModal, setActiveModal] = useState(() => {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('openAR') === '1') {
+      return 'ar';
+    }
+    return null;
+  }); // 'scene' | 'share' | 'ar' | 'help' | 'scan' | 'cart' | 'quote'
   const [activeHotspot, setActiveHotspot] = useState(null); // 'finish' | 'hardware' | 'countertop' | 'faucet' | 'mirror'
   const [toastMsg, setToastMsg] = useState(null);
 
@@ -262,6 +268,7 @@ export default function App() {
       {/* Hero Product Showroom & Configuration Split */}
       <main className="pdp-hero-layout">
         <ShowroomStage
+          ref={showroomRef}
           config={config}
           activeVariant={activeVariant}
           activeHotspot={activeHotspot}
@@ -411,7 +418,14 @@ export default function App() {
           <ARModal
             key="ar"
             activeVariant={activeVariant}
+            config={config}
             shareUrl={shareUrl}
+            onLaunchWebXR={async (opts) => {
+              setActiveModal(null);
+              await showroomRef.current?.startAR(opts);
+            }}
+            onExportAR={(format, opts) => showroomRef.current?.exportAR(format, opts)}
+            onShowToast={showToast}
             onClose={() => setActiveModal(null)}
           />
         )}

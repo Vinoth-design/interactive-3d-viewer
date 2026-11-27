@@ -21,6 +21,8 @@ import {
 import { AccessoryBuilder } from './AccessoryBuilder';
 import { BathroomRoomBuilder } from './BathroomRoomBuilder';
 import { DimensionOverlay } from './DimensionOverlay';
+import { ARSessionController } from './arSessionController';
+import { exportConfiguredGLB, exportConfiguredUSDZ } from './arExporter';
 
 // Exact closed rest positions in glTF local millimeter coordinates
 const D1_CLOSED_POS = new THREE.Vector3(0, 523.5, 238.075);
@@ -174,6 +176,8 @@ export class VanitySceneManager {
     this.dimensionOverlay = new DimensionOverlay();
     this.scene.add(this.dimensionOverlay.root);
 
+    this.arController = new ARSessionController(this);
+
     this.modelRoot = null;
     this.mixer = null;
     this.actions = {};
@@ -250,7 +254,7 @@ export class VanitySceneManager {
 
   _bindEvents() {
     this._onResize = () => {
-      if (!this.container || this.isDisposed) return;
+      if (!this.container || this.isDisposed || this.renderer.xr?.isPresenting) return;
       const w = this.container.clientWidth;
       const h = this.container.clientHeight;
       if (w === 0 || h === 0) return;
@@ -397,6 +401,9 @@ export class VanitySceneManager {
     });
 
     this.scene.add(this.modelRoot);
+    if (this.arController?.isActive) {
+      this.arController.attachModelRoot(this.modelRoot);
+    }
 
     this.dL1Node = this.modelRoot.getObjectByName('Drawer_L1_Root');
     this.dL2Node = this.modelRoot.getObjectByName('Drawer_L2_Root');
@@ -592,9 +599,10 @@ export class VanitySceneManager {
   _applyLightingPreset(preset) {
     if (!preset) preset = 'warm-bath';
     this.currentLightingPreset = preset;
+    const isAR = Boolean(this.arController?.isActive);
 
     if (preset === 'studio') {
-      this.scene.background.set('#dadde2');
+      if (!isAR) this.scene.background?.set('#dadde2');
       this.hemiLight.color.set('#f5f8fa');
       this.hemiLight.groundColor.set('#b4b8bd');
       this.hemiLight.intensity = 0.56;
@@ -614,7 +622,7 @@ export class VanitySceneManager {
       }
       this.roomBuilder?.setSconceLightIntensity(0.28);
     } else if (preset === 'daylight') {
-      this.scene.background.set('#e6ecf1');
+      if (!isAR) this.scene.background?.set('#e6ecf1');
       this.hemiLight.color.set('#e8f2fc');
       this.hemiLight.groundColor.set('#c4beb2');
       this.hemiLight.intensity = 0.62;
@@ -634,7 +642,7 @@ export class VanitySceneManager {
       }
       this.roomBuilder?.setSconceLightIntensity(0.22);
     } else if (preset === 'evening') {
-      this.scene.background.set('#22272e');
+      if (!isAR) this.scene.background?.set('#22272e');
       this.hemiLight.color.set('#536276');
       this.hemiLight.groundColor.set('#201c18');
       this.hemiLight.intensity = 0.44;
@@ -655,7 +663,7 @@ export class VanitySceneManager {
       this.roomBuilder?.setSconceLightIntensity(0.95);
     } else {
       // 'warm-bath' (Default) - Calibrated natural architectural bathroom lighting
-      this.scene.background.set('#e5e1d8');
+      if (!isAR) this.scene.background?.set('#e5e1d8');
       this.hemiLight.color.set('#fff8ec');
       this.hemiLight.groundColor.set('#c8beae');
       this.hemiLight.intensity = 0.56;
@@ -973,8 +981,36 @@ export class VanitySceneManager {
     this._updateHotspotPositions();
   }
 
+  async startARSession(overlayElement, callbacks = {}) {
+    return this.arController.start(overlayElement, callbacks);
+  }
+
+  async stopARSession() {
+    return this.arController.stop();
+  }
+
+  repositionAR() {
+    this.arController.reposition();
+  }
+
+  rotateAR(deltaRadians) {
+    this.arController.rotateBy(deltaRadians);
+  }
+
+  setARIncludeMirror(includeMirror) {
+    this.arController.setIncludeMirror(includeMirror);
+  }
+
+  async exportARModel(format = 'glb', options = {}) {
+    if (format === 'usdz') {
+      return exportConfiguredUSDZ(this, options);
+    }
+    return exportConfiguredGLB(this, options);
+  }
+
   dispose() {
     this.isDisposed = true;
+    this.arController?.dispose();
     if (this._rafId !== null) {
       cancelAnimationFrame(this._rafId);
     }
