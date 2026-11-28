@@ -144,7 +144,7 @@ export function SceneSettingsModal({ config, onUpdateConfig, onClose }) {
           <div className="toggle-text">
             <span className="toggle-title">Bathroom Styling Props</span>
             <span className="toggle-desc">
-              Wall sconces, soap dispenser, candle, eucalyptus vase, bath mat &amp; towel basket
+              Wall sconces, soap dispenser, potted succulent, bath mat &amp; towel basket
             </span>
           </div>
           <button

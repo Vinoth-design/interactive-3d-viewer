@@ -67,10 +67,6 @@ export class BathroomRoomBuilder {
     this.soapGroup.name = 'Soap_Dispenser_Group';
     this.propsGroup.add(this.soapGroup);
 
-    this.candleGroup = new THREE.Group();
-    this.candleGroup.name = 'Diffuser_Prop_Group';
-    this.propsGroup.add(this.candleGroup);
-
     this.vaseGroup = new THREE.Group();
     this.vaseGroup.name = 'Plant_Vase_Group';
     this.propsGroup.add(this.vaseGroup);
@@ -213,20 +209,7 @@ export class BathroomRoomBuilder {
       }
     });
 
-    // 2. Amber Glass Reed Diffuser (from architectural scene)
-    this._loadPropAsset('/models/props/arch/arch_diffuser.glb', this.candleGroup, 0.21, deckY, null, (child) => {
-      if (child.name === 'Diffuser_Bottle' && child.material) {
-        child.material.roughness = 0.12;
-        child.material.metalness = 0.05;
-        child.material.envMapIntensity = 1.25;
-      } else if (child.name.startsWith('Diffuser_Reed') && child.material) {
-        child.material.map = oakPBR.map;
-        child.material.roughness = 0.65;
-        child.material.needsUpdate = true;
-      }
-    });
-
-    // 3. Real Poly Haven CC0 Potted Succulent Plant (1K PBR diffuse/normal/ARM)
+    // 2. Real Poly Haven CC0 Potted Succulent Plant (1K PBR diffuse/normal/ARM)
     this._loadPropAsset(
       '/models/props/potted_plant_04/potted_plant_04.gltf',
       this.vaseGroup,
@@ -234,7 +217,7 @@ export class BathroomRoomBuilder {
       deckY
     );
 
-    // 4. Sculpted Oak Bathroom Stool w/ Rolled Plush Towels + Poly Haven Wicker Basket
+    // 3. Sculpted Oak Bathroom Stool w/ Rolled Plush Towels + Poly Haven Wicker Basket
     this._loadPropAsset(
       '/models/props/arch/arch_stool.glb',
       this.basketGroup,
@@ -485,28 +468,24 @@ export class BathroomRoomBuilder {
     // 2. Adaptive Positioning per Vanity Width (no clipping with basins, legs, or faucets)
     if (widthId === '24') {
       this.soapGroup.position.set(-0.26, 0, -0.105);
-      this.candleGroup.position.set(-0.25, 0, 0.065);
       this.vaseGroup.position.set(0.255, 0, -0.075);
       this.basketGroup.position.set(0.62, 0, -0.04);
       this.bathMatGroup.scale.set(0.88, 1, 1);
       if (this.contactShadow) this.contactShadow.scale.set(0.85, 0.9, 1);
     } else if (widthId === '31') {
       this.soapGroup.position.set(-0.315, 0, -0.105);
-      this.candleGroup.position.set(-0.305, 0, 0.065);
       this.vaseGroup.position.set(0.31, 0, -0.075);
       this.basketGroup.position.set(0.68, 0, -0.04);
       this.bathMatGroup.scale.set(1.0, 1, 1);
       if (this.contactShadow) this.contactShadow.scale.set(1.0, 1.0, 1);
     } else if (widthId === '37') {
       this.soapGroup.position.set(-0.36, 0, -0.105);
-      this.candleGroup.position.set(-0.35, 0, 0.065);
       this.vaseGroup.position.set(0.36, 0, -0.075);
       this.basketGroup.position.set(0.76, 0, -0.04);
       this.bathMatGroup.scale.set(1.12, 1, 1);
       if (this.contactShadow) this.contactShadow.scale.set(1.16, 1.0, 1);
     } else if (widthId === '49') {
       this.soapGroup.position.set(-0.42, 0, -0.105);
-      this.candleGroup.position.set(-0.41, 0, 0.065);
       this.vaseGroup.position.set(0.42, 0, -0.075);
       this.basketGroup.position.set(0.92, 0, -0.04);
       this.bathMatGroup.scale.set(1.35, 1, 1);
@@ -514,7 +493,6 @@ export class BathroomRoomBuilder {
     } else if (widthId === '61') {
       this.vaseGroup.position.set(0.0, 0, -0.075);
       this.soapGroup.position.set(-0.67, 0, -0.105);
-      this.candleGroup.position.set(0.67, 0, -0.095);
       this.basketGroup.position.set(1.10, 0, -0.04);
       this.bathMatGroup.scale.set(1.58, 1, 1);
       if (this.contactShadow) this.contactShadow.scale.set(1.88, 1.0, 1);
