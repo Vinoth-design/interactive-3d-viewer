@@ -3,6 +3,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   Box,
   Camera,
+  ChevronLeft,
+  ChevronRight,
   Eye,
   EyeOff,
   Maximize2,
@@ -19,7 +21,8 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import { VanitySceneManager } from '../three/VanitySceneManager';
-import { CABINET_FINISHES, WIDTH_OPTIONS } from '../catalog/index';
+import { WIDTH_OPTIONS } from '../catalog/index';
+import PartOptionsEditor, { getHotspotMeta } from './PartOptionsEditor';
 
 const CAMERA_VIEWS = [
   { id: 'threeQuarter', label: '3/4 View' },
@@ -59,6 +62,7 @@ const Viewport3D = React.forwardRef(function Viewport3D(
   const hostRef = useRef(null);
   const managerRef = useRef(null);
   const hotspotRefs = useRef({});
+  const arHotspotRefs = useRef({});
   const arOverlayRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
@@ -68,12 +72,15 @@ const Viewport3D = React.forwardRef(function Viewport3D(
   const [activePreset, setActivePreset] = useState('threeQuarter');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showHotspots, setShowHotspots] = useState(true);
+  const [showCameraPresets, setShowCameraPresets] = useState(true);
+  const [arHotspot, setArHotspot] = useState(null);
   const [arState, setArState] = useState({
     active: false,
     placed: false,
     floorDetected: false,
     includeMirror: false,
     drawersOpen: false,
+    showHotspots: true,
   });
 
   const isSeries = config?.purchaseMode === 'series';
@@ -90,6 +97,10 @@ const Viewport3D = React.forwardRef(function Viewport3D(
       },
       onProgress: (pct) => setLoadPct(pct),
       onSwitching: (busy) => setSwitchingVariant(busy),
+      onDrawerStateChange: (drawerMap) => {
+        const anyOpen = Object.values(drawerMap || {}).some(Boolean);
+        setArState((prev) => ({ ...prev, drawersOpen: anyOpen }));
+      },
       onError: () => {
         setLoading(false);
         setLoadError('Unable to load 3D vanity model.');
@@ -98,6 +109,7 @@ const Viewport3D = React.forwardRef(function Viewport3D(
 
     managerRef.current = manager;
     manager.setHotspotElements(hotspotRefs.current);
+    manager.setARHotspotElements(arHotspotRefs.current);
 
     const initialWidthOpt = WIDTH_OPTIONS.find((w) => w.id === config?.width) || WIDTH_OPTIONS[1];
     const initialModelFile = initialWidthOpt.modelFile || '/models/Everdale_31_Vanity_Interactive.glb';
@@ -286,9 +298,16 @@ const Viewport3D = React.forwardRef(function Viewport3D(
         })}
       </div>
 
-      {/* Top-Left Camera Angle Presets */}
-      <div className="camera-presets-bar" role="toolbar" aria-label="3D camera views">
-        {CAMERA_VIEWS.map((view) => (
+      {/* Top-Left Camera Angle Presets with Active Pill + Chevron Expand/Collapse (Desktop & Mobile) */}
+      <div
+        className={`camera-presets-bar ${showCameraPresets ? 'expanded' : 'collapsed'}`}
+        role="toolbar"
+        aria-label="3D camera views"
+      >
+        {(showCameraPresets
+          ? CAMERA_VIEWS
+          : [CAMERA_VIEWS.find((view) => view.id === activePreset) || CAMERA_VIEWS[0]]
+        ).map((view) => (
           <button
             key={view.id}
             type="button"
@@ -299,14 +318,28 @@ const Viewport3D = React.forwardRef(function Viewport3D(
             {view.label}
           </button>
         ))}
+
+        {showCameraPresets && (
+          <button
+            type="button"
+            className="preset-pill preset-reset"
+            onClick={handleResetCamera}
+            title="Reset camera framing"
+            aria-label="Reset camera"
+          >
+            <RotateCcw size={13} />
+          </button>
+        )}
+
         <button
           type="button"
-          className="preset-pill preset-reset"
-          onClick={handleResetCamera}
-          title="Reset camera framing"
-          aria-label="Reset camera"
+          className="preset-pill preset-chevron-toggle"
+          onClick={() => setShowCameraPresets((prev) => !prev)}
+          title={showCameraPresets ? 'Collapse camera views' : 'Show all camera views'}
+          aria-label={showCameraPresets ? 'Hide camera views' : 'Show camera views'}
+          aria-expanded={showCameraPresets}
         >
-          <RotateCcw size={13} />
+          {showCameraPresets ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
         </button>
       </div>
 
@@ -424,12 +457,38 @@ const Viewport3D = React.forwardRef(function Viewport3D(
       >
         {arState.active && (
           <>
+            {/* Projected 3D Hotspot Annotations tracked on Placed AR Cabinet */}
+            <div
+              className={`ar-hotspot-pins-layer ${arState.placed && arState.showHotspots ? 'visible' : 'hidden'}`}
+              aria-label="AR cabinet customization hotspots"
+            >
+              {HOTSPOT_DEFS.map((hs) => {
+                const isSelected = arHotspot === hs.id;
+                return (
+                  <button
+                    key={hs.id}
+                    ref={(el) => {
+                      arHotspotRefs.current[hs.id] = el;
+                    }}
+                    type="button"
+                    className={`hotspot-pin-btn ar-hotspot-pin-btn ar-hud-interactive ${isSelected ? 'active' : ''}`}
+                    onClick={() => setArHotspot((prev) => (prev === hs.id ? null : hs.id))}
+                    aria-expanded={isSelected}
+                    aria-label={`Customize ${hs.label} in AR`}
+                  >
+                    <span className="hotspot-pin-dot" />
+                    <span className="hotspot-pin-label">{hs.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
             <div className="ar-hud-top">
               <div className="ar-hud-status ar-hud-interactive">
                 <span className={`ar-status-dot ${arState.placed ? 'placed' : arState.floorDetected ? 'ready' : ''}`} />
                 <span>
                   {arState.placed
-                    ? `${variant.topWidthIn}″ Vanity Placed · True 1:1 Scale`
+                    ? `${variant.topWidthIn}″ Placed · Tap drawer to open or pin to edit`
                     : arState.floorDetected
                       ? 'Floor detected — tap screen to place cabinet'
                       : 'Point camera at bathroom floor slowly…'}
@@ -439,7 +498,10 @@ const Viewport3D = React.forwardRef(function Viewport3D(
               <button
                 type="button"
                 className="ar-hud-exit ar-hud-interactive"
-                onClick={() => managerRef.current?.stopARSession()}
+                onClick={() => {
+                  setArHotspot(null);
+                  managerRef.current?.stopARSession();
+                }}
                 aria-label="Exit AR view"
               >
                 <X size={16} />
@@ -447,79 +509,132 @@ const Viewport3D = React.forwardRef(function Viewport3D(
               </button>
             </div>
 
-            <div className="ar-hud-bottom ar-hud-interactive">
-              {arState.placed && (
-                <div className="ar-hud-swatches" aria-label="Change cabinet finish live in AR">
-                  {CABINET_FINISHES.map((fin) => {
-                    const selected = config?.finish === fin.id;
-                    return (
+            <div className="ar-hud-bottom-stack">
+              {/* Live Option Selector Drawer inside AR View (Full 3D Viewer Options) */}
+              {arState.placed && arHotspot && (() => {
+                const arMeta = getHotspotMeta(arHotspot, isSeries);
+                if (!arMeta) return null;
+                return (
+                  <div className="ar-option-sheet ar-hud-interactive" role="dialog" aria-label={`${arMeta.title} in AR`}>
+                    <div className="hotspot-popover-head">
+                      <div>
+                        <div className="hotspot-popover-title">{arMeta.title}</div>
+                        <div className="hotspot-popover-sub">{arMeta.badge}</div>
+                      </div>
                       <button
-                        key={fin.id}
                         type="button"
-                        className={`ar-swatch-chip ${selected ? 'active' : ''}`}
-                        onClick={() => onUpdateConfig?.({ finish: fin.id })}
+                        className="modal-close-btn"
+                        style={{ width: 28, height: 28 }}
+                        onClick={() => setArHotspot(null)}
+                        aria-label="Close AR options"
                       >
-                        <span
-                          className="ar-swatch-dot"
-                          style={{ background: fin.hex || '#8f968a' }}
-                        />
-                        <span>{fin.name}</span>
+                        <X size={14} />
                       </button>
-                    );
-                  })}
-                </div>
-              )}
+                    </div>
+                    <div className="ar-option-sheet-body">
+                      <PartOptionsEditor
+                        activeHotspot={arHotspot}
+                        config={config}
+                        isDouble={isDouble}
+                        isSeries={isSeries}
+                        onUpdateConfig={(patch) => {
+                          onUpdateConfig?.(patch);
+                          if (patch?.mirror && patch.mirror !== 'none' && !arState.includeMirror) {
+                            setArState((prev) => ({ ...prev, includeMirror: true }));
+                            managerRef.current?.setARIncludeMirror(true);
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
 
-              <div className="ar-hud-actions">
-                <button
-                  type="button"
-                  className="ar-hud-btn"
-                  onClick={() => managerRef.current?.repositionAR()}
-                >
-                  <Move size={14} />
-                  <span>{arState.placed ? 'Re-place' : 'Scanning…'}</span>
-                </button>
-                <button
-                  type="button"
-                  className="ar-hud-btn"
-                  disabled={!arState.placed}
-                  onClick={() => managerRef.current?.rotateAR(-Math.PI / 12)}
-                >
-                  <RotateCcw size={14} />
-                  <span>-15°</span>
-                </button>
-                <button
-                  type="button"
-                  className="ar-hud-btn"
-                  disabled={!arState.placed}
-                  onClick={() => managerRef.current?.rotateAR(Math.PI / 12)}
-                >
-                  <RotateCw size={14} />
-                  <span>+15°</span>
-                </button>
-                <button
-                  type="button"
-                  className="ar-hud-btn"
-                  disabled={!arState.placed}
-                  onClick={() => {
-                    const nextOpen = !arState.drawersOpen;
-                    setArState((prev) => ({ ...prev, drawersOpen: nextOpen }));
-                    managerRef.current?.setAllDrawers(nextOpen);
-                  }}
-                >
-                  <span>{arState.drawersOpen ? 'Close Drawers' : 'Open Drawers'}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`ar-hud-btn ${arState.includeMirror ? 'active' : ''}`}
-                  onClick={() => {
-                    const nextMirror = !arState.includeMirror;
-                    setArState((prev) => ({ ...prev, includeMirror: nextMirror }));
-                    managerRef.current?.setARIncludeMirror(nextMirror);
-                  }}
-                >
-                  <span>{arState.includeMirror ? 'Mirror On' : 'Mirror Off'}</span>
-                </button>
+              <div className="ar-hud-bottom ar-hud-interactive">
+                {arState.placed && (
+                  <div className="ar-hud-swatches" aria-label="Select cabinet part options in AR">
+                    {HOTSPOT_DEFS.map((hs) => {
+                      const selected = arHotspot === hs.id;
+                      return (
+                        <button
+                          key={hs.id}
+                          type="button"
+                          className={`ar-part-pill ${selected ? 'active' : ''}`}
+                          onClick={() => setArHotspot((prev) => (prev === hs.id ? null : hs.id))}
+                        >
+                          <span className="ar-part-dot" />
+                          <span>{hs.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="ar-hud-actions">
+                  <button
+                    type="button"
+                    className={`ar-hud-btn ${arState.showHotspots ? 'active' : ''}`}
+                    disabled={!arState.placed}
+                    onClick={() =>
+                      setArState((prev) => ({ ...prev, showHotspots: !prev.showHotspots }))
+                    }
+                  >
+                    {arState.showHotspots ? <Eye size={14} /> : <EyeOff size={14} />}
+                    <span>Hotspots</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="ar-hud-btn"
+                    onClick={() => {
+                      setArHotspot(null);
+                      managerRef.current?.repositionAR();
+                    }}
+                  >
+                    <Move size={14} />
+                    <span>{arState.placed ? 'Re-place' : 'Scanning…'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="ar-hud-btn"
+                    disabled={!arState.placed}
+                    onClick={() => managerRef.current?.rotateAR(-Math.PI / 12)}
+                  >
+                    <RotateCcw size={14} />
+                    <span>-15°</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="ar-hud-btn"
+                    disabled={!arState.placed}
+                    onClick={() => managerRef.current?.rotateAR(Math.PI / 12)}
+                  >
+                    <RotateCw size={14} />
+                    <span>+15°</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`ar-hud-btn ${arState.drawersOpen ? 'active' : ''}`}
+                    disabled={!arState.placed}
+                    onClick={() => {
+                      const nextOpen = !arState.drawersOpen;
+                      setArState((prev) => ({ ...prev, drawersOpen: nextOpen }));
+                      managerRef.current?.setAllDrawers(nextOpen);
+                    }}
+                  >
+                    <span>{arState.drawersOpen ? 'Close Drawers' : 'Open Drawers'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`ar-hud-btn ${arState.includeMirror ? 'active' : ''}`}
+                    onClick={() => {
+                      const nextMirror = !arState.includeMirror;
+                      setArState((prev) => ({ ...prev, includeMirror: nextMirror }));
+                      managerRef.current?.setARIncludeMirror(nextMirror);
+                    }}
+                  >
+                    <span>{arState.includeMirror ? 'Mirror On' : 'Mirror Off'}</span>
+                  </button>
+                </div>
               </div>
             </div>
           </>

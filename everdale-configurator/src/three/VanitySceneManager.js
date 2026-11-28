@@ -881,6 +881,10 @@ export class VanitySceneManager {
     this.hotspotElements = elMap || {};
   }
 
+  setARHotspotElements(elMap) {
+    this.arController?.setHotspotElements(elMap);
+  }
+
   _getHotspotWorldAnchors() {
     const widthOpt = WIDTH_OPTIONS.find((w) => w.id === this.activeWidthId) || WIDTH_OPTIONS[1];
     const halfW = (widthOpt.topWidthMm / 1000.0) / 2.0;

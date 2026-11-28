@@ -30,15 +30,18 @@ export class ARSessionController {
     this._dragPointerId = null;
     this._isDragging = false;
     this._prevDragX = 0;
+    this._downPos = { x: 0, y: 0 };
+    this._movedDist = 0;
+    this.arHotspotElements = {};
+    this._projVec = new THREE.Vector3();
+    this._worldAnchor = new THREE.Vector3();
+    this._rayNdc = new THREE.Vector2();
 
     this._boundOnSelect = () => this._handleXRSelect();
     this._boundOnSessionEnd = () => this._cleanupAfterSessionEnd();
     this._boundTouchMove = (e) => this._handleDomMove(e);
     this._boundTouchStart = (e) => this._handleDomStart(e);
-    this._boundTouchEnd = () => {
-      this._isDragging = false;
-      this._dragPointerId = null;
-    };
+    this._boundTouchEnd = (e) => this._handleDomEnd(e);
   }
 
   _createReticle() {
@@ -246,17 +249,37 @@ export class ARSessionController {
     });
   }
 
+  setHotspotElements(elMap) {
+    this.arHotspotElements = elMap || {};
+  }
+
+  _getActiveXRCamera() {
+    const xrCam = this.manager.renderer.xr.getCamera();
+    return xrCam?.cameras?.[0] || xrCam || this.manager.camera;
+  }
+
   _handleDomStart(e) {
     if (!this.isActive || !this.isPlaced) return;
-    // Only drag when touching directly on overlay backdrop (not control buttons)
-    if (e.target?.closest?.('.ar-hud-interactive')) return;
+    // Only interact with 3D model when touching outside HUD buttons / hotspot badges
+    if (e.target?.closest?.('.ar-hud-interactive') || e.target?.closest?.('.ar-hotspot-pin-btn')) {
+      return;
+    }
     this._isDragging = true;
     this._dragPointerId = e.pointerId;
     this._prevDragX = e.clientX;
+    this._downPos = { x: e.clientX, y: e.clientY };
+    this._movedDist = 0;
   }
 
   _handleDomMove(e) {
     if (!this._isDragging || e.pointerId !== this._dragPointerId) return;
+    const dist = Math.hypot(e.clientX - this._downPos.x, e.clientY - this._downPos.y);
+    if (dist > this._movedDist) {
+      this._movedDist = dist;
+    }
+    // Wait until movement exceeds tap threshold (8px) before repositioning cabinet
+    if (this._movedDist <= 8) return;
+
     if (this._hasHit) {
       const pos = new THREE.Vector3();
       const quat = new THREE.Quaternion();
@@ -269,6 +292,82 @@ export class ARSessionController {
       this.arAnchor.position.x += dx;
     }
     this._prevDragX = e.clientX;
+  }
+
+  _handleDomEnd(e) {
+    const wasTap = this._isDragging && e.pointerId === this._dragPointerId && this._movedDist <= 8;
+    this._isDragging = false;
+    this._dragPointerId = null;
+
+    if (!wasTap || !this.isActive || !this.isPlaced) return;
+    const hitDrawer = this._raycastDrawerTap(e);
+    if (hitDrawer) {
+      this.manager.toggleDrawer(hitDrawer);
+    }
+  }
+
+  _raycastDrawerTap(event) {
+    const mgr = this.manager;
+    if (!mgr.drawerHitMap || mgr.drawerHitMap.size === 0) return null;
+    const hostEl = this._overlayEl || mgr.renderer.domElement;
+    const rect = hostEl.getBoundingClientRect();
+    const w = rect.width || window.innerWidth;
+    const h = rect.height || window.innerHeight;
+    if (w === 0 || h === 0) return null;
+
+    this._rayNdc.set(
+      ((event.clientX - rect.left) / w) * 2 - 1,
+      -((event.clientY - rect.top) / h) * 2 + 1
+    );
+
+    const activeCam = this._getActiveXRCamera();
+    activeCam.updateMatrixWorld(true);
+    mgr.raycaster.setFromCamera(this._rayNdc, activeCam);
+
+    const targets = Array.from(mgr.drawerHitMap.keys());
+    const hits = mgr.raycaster.intersectObjects(targets, false);
+    if (hits.length === 0) return null;
+    return mgr.drawerHitMap.get(hits[0].object);
+  }
+
+  _updateARHotspots() {
+    if (!this.arHotspotElements || !this.isActive || !this.isPlaced) return;
+    const hostEl = this._overlayEl || this.manager.renderer.domElement;
+    const w = hostEl?.clientWidth || window.innerWidth;
+    const h = hostEl?.clientHeight || window.innerHeight;
+    if (w === 0 || h === 0) return;
+
+    this.arAnchor.updateMatrixWorld(true);
+    const activeCam = this._getActiveXRCamera();
+    activeCam.updateMatrixWorld(true);
+    activeCam.matrixWorldInverse.copy(activeCam.matrixWorld).invert();
+
+    const anchors = this.manager._getHotspotWorldAnchors();
+    Object.entries(this.arHotspotElements).forEach(([key, el]) => {
+      if (!el || !anchors[key]) return;
+      this._worldAnchor.copy(anchors[key]).applyMatrix4(this.arAnchor.matrixWorld);
+      this._projVec.copy(this._worldAnchor).project(activeCam);
+
+      const outOfBounds =
+        this._projVec.z > 1 ||
+        this._projVec.z < -1 ||
+        this._projVec.x < -0.95 ||
+        this._projVec.x > 0.95 ||
+        this._projVec.y < -0.92 ||
+        this._projVec.y > 0.92;
+
+      if (outOfBounds) {
+        el.style.opacity = '0';
+        el.style.pointerEvents = 'none';
+        return;
+      }
+
+      const px = Math.round((this._projVec.x * 0.5 + 0.5) * w);
+      const py = Math.round((-this._projVec.y * 0.5 + 0.5) * h);
+      el.style.opacity = '1';
+      el.style.pointerEvents = 'auto';
+      el.style.transform = `translate3d(${px}px, ${py}px, 0) translate(-50%, -50%)`;
+    });
   }
 
   /**
@@ -330,6 +429,7 @@ export class ARSessionController {
 
     // WebXR bypasses EffectComposer so alpha passthrough renders crisply
     mgr.renderer.render(mgr.scene, mgr.camera);
+    this._updateARHotspots();
   }
 
   async stop() {

@@ -120,10 +120,31 @@ export function getWoodTextures(variant = 'natural-oak') {
 }
 
 /**
- * Real Poly Haven CC0 fabric linen weave PBR set for towels & bath mats.
+ * Real Poly Haven CC0 fabric linen weave PBR set for towels & curtains.
  */
 export function getFabricPBR(repeatX = 3.5, repeatY = 2.5) {
   return loadPBRSet('rough_linen', repeatX, repeatY);
+}
+
+/**
+ * Real Poly Haven CC0 Waffle Pique Cotton PBR set (diffuse, normal, bump/disp, ao, roughness)
+ * for high-detail 3D bath mat depth, waffle pockets, and lighting relief.
+ */
+export function getBathMatPBR(repeatX = 2.5, repeatY = 1.65) {
+  const cacheKey = `bath_mat_waffle_${repeatX}_${repeatY}`;
+  if (textureCache.has(cacheKey)) return textureCache.get(cacheKey);
+
+  const base = '/textures/pbr/bath_mat_waffle';
+  // Poly Haven's waffle_pique_cotton AO + bump encode crisp neutral waffle weave without the dyed yellow tint
+  const set = {
+    map: loadImageTexture(`${base}/ao.jpg`, repeatX, repeatY, true),
+    normalMap: loadImageTexture(`${base}/normal.jpg`, repeatX, repeatY, false),
+    bumpMap: loadImageTexture(`${base}/bump.jpg`, repeatX, repeatY, false),
+    aoMap: loadImageTexture(`${base}/ao.jpg`, repeatX, repeatY, false),
+    roughnessMap: loadImageTexture(`${base}/roughness.jpg`, repeatX, repeatY, false),
+  };
+  textureCache.set(cacheKey, set);
+  return set;
 }
 
 /**

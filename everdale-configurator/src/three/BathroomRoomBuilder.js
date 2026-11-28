@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
+  getBathMatPBR,
   getBrushedMetalNormal,
   getFabricPBR,
   getFloorPBR,
@@ -270,28 +271,141 @@ export class BathroomRoomBuilder {
       }
     );
 
-    // 5. Textured Woven Bath Rug (architectural rug mesh + Poly Haven rough_linen PBR)
-    this._loadPropAsset(
-      '/models/props/arch/arch_rug.glb',
-      this.bathMatGroup,
-      0.012,
-      0.002,
-      (mounted) => {
-        mounted.position.set(0, 0.002, 0.58);
-        mounted.scale.set(0.68, 1, 0.72);
-      },
-      (child) => {
-        if (child.material) {
-          child.material.map = fabricPBR.map;
-          child.material.normalMap = fabricPBR.normalMap;
-          child.material.normalScale?.set(0.6, 0.6);
-          child.material.roughnessMap = fabricPBR.roughnessMap;
-          child.material.color.set('#e5dfd4');
-          child.material.roughness = 0.94;
-          child.material.needsUpdate = true;
-        }
+    // 5. High-detail Sculpted Cotton Bath Mat (Poly Haven waffle_pique_cotton 1K PBR + bump/disp/AO)
+    this._buildPhotorealisticBathMat();
+  }
+
+  /**
+   * Builds a dense subdivided rounded-rectangle bath mat with rolled border hem,
+   * Poly Haven waffle_pique_cotton PBR (diffuse, normal, bump + displacement, AO, roughness),
+   * and soft perimeter contact shadow for realistic floor grounding.
+   */
+  _buildPhotorealisticBathMat() {
+    while (this.bathMatGroup.children.length > 0) {
+      const child = this.bathMatGroup.children[0];
+      child.traverse((obj) => {
+        obj.geometry?.dispose?.();
+      });
+      this.bathMatGroup.remove(child);
+    }
+
+    const width = 0.88;
+    const depth = 0.56;
+    const halfW = width * 0.5;
+    const halfD = depth * 0.5;
+    const cornerR = 0.048;
+    const baseHeight = 0.015;
+    const segX = 120;
+    const segZ = 80;
+
+    const geo = new THREE.PlaneGeometry(width, depth, segX, segZ);
+    geo.rotateX(-Math.PI / 2);
+
+    const posAttr = geo.attributes.position;
+    const uvAttr = geo.attributes.uv;
+    const innerX = halfW - cornerR;
+    const innerZ = halfD - cornerR;
+
+    for (let i = 0; i < posAttr.count; i++) {
+      let x = posAttr.getX(i);
+      let z = posAttr.getZ(i);
+
+      // Clamp outer corners onto rounded-rectangle perimeter
+      const ox = Math.max(0, Math.abs(x) - innerX);
+      const oz = Math.max(0, Math.abs(z) - innerZ);
+      const cDist = Math.hypot(ox, oz);
+      if (cDist > cornerR) {
+        const s = cornerR / cDist;
+        x = Math.sign(x) * (innerX + ox * s);
+        z = Math.sign(z) * (innerZ + oz * s);
       }
-    );
+
+      // Signed distance inward from rounded border edge
+      const qx = Math.abs(x) - innerX;
+      const qz = Math.abs(z) - innerZ;
+      const sdf =
+        Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) +
+        Math.min(Math.max(qx, qz), 0) -
+        cornerR;
+      const edgeIn = Math.max(0, -sdf);
+
+      // Rounded cushion edge bevel + tailored stitched border frame groove
+      const bevelRatio = Math.min(1, edgeIn / 0.024);
+      let y = baseHeight * Math.sin(bevelRatio * Math.PI * 0.5);
+
+      if (edgeIn > 0.016 && edgeIn < 0.068) {
+        const hemPhase = (edgeIn - 0.016) / 0.052;
+        y += 0.0038 * Math.sin(hemPhase * Math.PI);
+      } else if (edgeIn >= 0.068 && edgeIn < 0.088) {
+        const seamPhase = (edgeIn - 0.068) / 0.020;
+        y -= 0.0028 * Math.sin(seamPhase * Math.PI);
+      }
+      if (edgeIn <= 0.0005) {
+        y = 0;
+      }
+
+      posAttr.setXYZ(i, x, y, z);
+      uvAttr.setXY(i, x / width + 0.5, 1.0 - (z / depth + 0.5));
+    }
+
+    posAttr.needsUpdate = true;
+    uvAttr.needsUpdate = true;
+    geo.setAttribute('uv1', uvAttr.clone());
+    geo.computeVertexNormals();
+
+    const matPBR = getBathMatPBR(2.5, 1.65);
+    const bathMatMaterial = new THREE.MeshPhysicalMaterial({
+      map: matPBR.map,
+      normalMap: matPBR.normalMap,
+      normalScale: new THREE.Vector2(2.4, 2.4),
+      bumpMap: matPBR.bumpMap,
+      bumpScale: 0.055,
+      displacementMap: matPBR.bumpMap,
+      displacementScale: 0.0085,
+      displacementBias: 0.0005,
+      aoMap: matPBR.aoMap,
+      aoMapIntensity: 1.65,
+      roughnessMap: matPBR.roughnessMap,
+      color: new THREE.Color('#ded9ce'),
+      roughness: 0.94,
+      metalness: 0.0,
+      sheen: 0.92,
+      sheenRoughness: 0.68,
+      sheenColor: new THREE.Color('#faf6ef'),
+      envMapIntensity: 0.55,
+    });
+
+    const matMesh = new THREE.Mesh(geo, bathMatMaterial);
+    matMesh.name = 'Bath_Mat_Mesh';
+    matMesh.castShadow = true;
+    matMesh.receiveShadow = true;
+
+    // Grounded soft perimeter AO shadow halo underneath the bath mat
+    const haloCanvas = document.createElement('canvas');
+    haloCanvas.width = 256;
+    haloCanvas.height = 192;
+    const hctx = haloCanvas.getContext('2d');
+    const grad = hctx.createRadialGradient(128, 96, 36, 128, 96, 124);
+    grad.addColorStop(0, 'rgba(18, 20, 22, 0.58)');
+    grad.addColorStop(0.62, 'rgba(20, 22, 24, 0.36)');
+    grad.addColorStop(0.88, 'rgba(20, 22, 24, 0.12)');
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    hctx.fillStyle = grad;
+    hctx.fillRect(0, 0, 256, 192);
+
+    const haloTex = new THREE.CanvasTexture(haloCanvas);
+    const haloMat = new THREE.MeshBasicMaterial({
+      map: haloTex,
+      transparent: true,
+      depthWrite: false,
+      opacity: 0.65,
+    });
+    const haloMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.98, 0.66), haloMat);
+    haloMesh.rotation.x = -Math.PI / 2;
+    haloMesh.position.y = -0.0006;
+
+    this.bathMatGroup.add(haloMesh, matMesh);
+    this.bathMatGroup.position.set(0, 0.0018, 0.58);
   }
 
   updateLayout(widthId = '31', mirrorType = 'rectangle') {
