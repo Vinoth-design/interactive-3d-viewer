@@ -36,8 +36,12 @@ export class ARSessionController {
     this._projVec = new THREE.Vector3();
     this._worldAnchor = new THREE.Vector3();
     this._rayNdc = new THREE.Vector2();
+    this._xrOrigin = new THREE.Vector3();
+    this._xrDir = new THREE.Vector3();
+    this._xrQuat = new THREE.Quaternion();
 
-    this._boundOnSelect = () => this._handleXRSelect();
+    this._boundOnSelect = (e) => this._handleXRSelect(e);
+    this._boundBeforeXRSelect = (e) => this._handleBeforeXRSelect(e);
     this._boundOnSessionEnd = () => this._cleanupAfterSessionEnd();
     this._boundTouchMove = (e) => this._handleDomMove(e);
     this._boundTouchStart = (e) => this._handleDomStart(e);
@@ -190,6 +194,7 @@ export class ARSessionController {
     session.addEventListener('select', this._boundOnSelect);
 
     this._overlayEl = overlayElement || mgr.renderer.domElement;
+    this._overlayEl.addEventListener('beforexrselect', this._boundBeforeXRSelect);
     this._overlayEl.addEventListener('pointerdown', this._boundTouchStart, { passive: true });
     this._overlayEl.addEventListener('pointermove', this._boundTouchMove, { passive: true });
     this._overlayEl.addEventListener('pointerup', this._boundTouchEnd);
@@ -216,9 +221,68 @@ export class ARSessionController {
     });
   }
 
-  _handleXRSelect() {
-    if (!this.isActive || this.isPlaced || !this._hasHit) return;
-    this._placeAtLastHit();
+  _handleBeforeXRSelect(event) {
+    // Prevent WebXR select firing when user taps UI controls, swatches, or hotspot pins
+    if (event?.target?.closest?.('.ar-hud-interactive, .ar-hotspot-pin-btn')) {
+      event.preventDefault();
+    }
+  }
+
+  _handleXRSelect(event) {
+    if (!this.isActive) return;
+
+    if (!this.isPlaced) {
+      if (this._hasHit) {
+        this._placeAtLastHit();
+      }
+      return;
+    }
+
+    // Placed state: raycast WebXR screen-tap ray onto placed vanity drawer meshes
+    const hitDrawer = this._raycastXRSelectDrawer(event);
+    if (hitDrawer) {
+      this.manager.toggleDrawer(hitDrawer);
+    }
+  }
+
+  _raycastXRSelectDrawer(event) {
+    const mgr = this.manager;
+    if (!mgr.drawerHitMap || mgr.drawerHitMap.size === 0) return null;
+
+    this.arAnchor.updateMatrixWorld(true);
+    let rayConfigured = false;
+
+    const frame = event?.frame;
+    const inputSource = event?.inputSource;
+    if (frame && inputSource?.targetRaySpace && this.refSpace) {
+      const rayPose = frame.getPose(inputSource.targetRaySpace, this.refSpace);
+      if (rayPose) {
+        const p = rayPose.transform.position;
+        const o = rayPose.transform.orientation;
+        this._xrOrigin.set(p.x, p.y, p.z);
+        this._xrQuat.set(o.x, o.y, o.z, o.w);
+        this._xrDir.set(0, 0, -1).applyQuaternion(this._xrQuat).normalize();
+        mgr.raycaster.set(this._xrOrigin, this._xrDir);
+        rayConfigured = true;
+      }
+    }
+
+    // Fallback for screen-mode XR input sources exposing normalized touch axes
+    if (!rayConfigured && inputSource?.gamepad?.axes?.length >= 2) {
+      const [axX, axY] = inputSource.gamepad.axes;
+      this._rayNdc.set(axX, -axY);
+      const activeCam = this._getActiveXRCamera();
+      activeCam.updateMatrixWorld(true);
+      mgr.raycaster.setFromCamera(this._rayNdc, activeCam);
+      rayConfigured = true;
+    }
+
+    if (!rayConfigured) return null;
+
+    const targets = Array.from(mgr.drawerHitMap.keys());
+    const hits = mgr.raycaster.intersectObjects(targets, false);
+    if (hits.length === 0) return null;
+    return mgr.drawerHitMap.get(hits[0].object);
   }
 
   _placeAtLastHit() {
@@ -467,6 +531,7 @@ export class ARSessionController {
     }
 
     if (this._overlayEl) {
+      this._overlayEl.removeEventListener('beforexrselect', this._boundBeforeXRSelect);
       this._overlayEl.removeEventListener('pointerdown', this._boundTouchStart);
       this._overlayEl.removeEventListener('pointermove', this._boundTouchMove);
       this._overlayEl.removeEventListener('pointerup', this._boundTouchEnd);
